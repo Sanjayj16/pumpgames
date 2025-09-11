@@ -131,7 +131,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import path from "path";
 import cors from "cors";
 import { registerRoutes } from "./simple-routes";
-import { setupVite, serveStatic as defaultServeStatic, log } from "./vite";
+import { setupVite, log } from "./vite";
 
 const app = express();
 
@@ -141,39 +141,29 @@ const isDevelopment = process.env.NODE_ENV === "development";
 
 // Allowed origins
 const allowedOrigins = isProduction
-  ? [
-      process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
-    ]
+  ? [process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app"]
   : ["http://localhost:5173", "http://127.0.0.1:5173"];
 
 // CORS middleware
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // allow non-browser requests (Postman, CURL)
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS policy: Origin ${origin} not allowed`));
-      }
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Origin",
-      "X-Requested-With",
-      "Content-Type",
-      "Accept",
-      "Authorization",
-      "Cache-Control",
-      "Pragma",
-    ],
-    credentials: true, // required for cookies/session
-    optionsSuccessStatus: 200, // handle preflight OPTIONS
-  })
-);
-
-// Handle preflight requests manually for safety
-app.options("*", cors());
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma"
+    );
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.header("Access-Control-Allow-Credentials", "true");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200); // preflight response
+    }
+    next();
+  } else {
+    console.warn(`Blocked CORS request from origin: ${origin}`);
+    res.status(403).json({ message: `CORS policy: Origin ${origin} not allowed` });
+  }
+});
 
 // Body parsing
 app.use(express.json({ limit: "10mb" }));
@@ -181,12 +171,8 @@ app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 
 // Dev logging
 if (isDevelopment) {
-  app.use((req, res, next) => {
-    console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.url} from ${
-        req.get("origin") || "unknown"
-      }`
-    );
+  app.use((req, _res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} from ${req.get("origin") || "unknown"}`);
     next();
   });
 }
@@ -219,7 +205,7 @@ app.use((req, res, next) => {
 });
 
 // Health check endpoint
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.status(200).json({
     status: "healthy",
     timestamp: new Date().toISOString(),
@@ -232,21 +218,19 @@ app.get("/health", (req, res) => {
   const server = await registerRoutes(app);
 
   // Error handling
-  app.use(
-    (err: any, _req: Request, res: Response, _next: NextFunction) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
 
-      if (isProduction) console.error("Production error:", err);
+    if (isProduction) console.error("Production error:", err);
 
-      res.status(status).json({
-        message: isProduction ? "Internal Server Error" : message,
-        ...(isDevelopment && { stack: err.stack }),
-      });
+    res.status(status).json({
+      message: isProduction ? "Internal Server Error" : message,
+      ...(isDevelopment && { stack: err.stack }),
+    });
 
-      if (isDevelopment) throw err;
-    }
-  );
+    if (isDevelopment) throw err;
+  });
 
   // Vite dev server in development
   if (isDevelopment) {
@@ -274,4 +258,3 @@ app.get("/health", (req, res) => {
     }
   });
 })();
-
