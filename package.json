@@ -5,16 +5,17 @@
   "license": "MIT",
   "scripts": {
     "dev": "tsx server/index.ts",
-  "build": "esbuild production.ts --platform=node --packages=external --bundle --format=cjs --outfile=dist/production.cjs --target=node18",
-  "start": "cross-env NODE_ENV=production node dist/production.cjs",
-  "start:dev": "cross-env NODE_ENV=development tsx server/index.ts"
+    "build": "esbuild production.ts --platform=node --packages=external --bundle --format=cjs --outfile=dist/production.cjs --target=node18",
+    "start": "cross-env NODE_ENV=production node dist/production.cjs",
+    "start:dev": "cross-env NODE_ENV=development tsx server/index.ts"
   },
   "dependencies": {
     "express": "^4.21.2",
     "ws": "^8.18.3",
     "cross-env": "^10.0.0",
     "esbuild": "^0.25.9",
-"@solana/web3.js": "^1.95.3"
+    "@solana/web3.js": "^1.95.3",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "tsx": "^4.19.1",
