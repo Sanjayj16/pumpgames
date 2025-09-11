@@ -147,7 +147,7 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 //     ]
 //   : ['*'];
 const allowedOrigins = isProduction
-  ? [process.env.FRONTEND_URL || 'https://your-frontend.netlify.app']
+  ? [process.env.FRONTEND_URL || 'https://harmonious-boba-11ae9e.netlify.app/']
   : ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
 app.use(cors({
