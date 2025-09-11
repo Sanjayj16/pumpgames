@@ -140,12 +140,15 @@ const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 // CORS middleware
+// const allowedOrigins = isProduction
+//   ? [
+//       process.env.FRONTEND_URL || 'http://localhost:3000',
+//       'https://your-frontend.netlify.app', // add more production URLs if needed
+//     ]
+//   : ['*'];
 const allowedOrigins = isProduction
-  ? [
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-      'https://your-frontend.netlify.app', // add more production URLs if needed
-    ]
-  : ['*'];
+  ? [process.env.FRONTEND_URL || 'https://your-frontend.netlify.app']
+  : ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
 app.use(cors({
   origin: (origin, callback) => {
