@@ -13,7 +13,8 @@
     "express": "^4.21.2",
     "ws": "^8.18.3",
     "cross-env": "^10.0.0",
-    "esbuild": "^0.25.9"
+    "esbuild": "^0.25.9",
+"@solana/web3.js": "^1.95.3"
   },
   "devDependencies": {
     "tsx": "^4.19.1",
