@@ -13,6 +13,7 @@ const app = express();
 const isProduction = process.env.NODE_ENV === "production";
 const isDevelopment = process.env.NODE_ENV === "development";
 
+// Get directory name in a way that works for both ESM and CommonJS
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -348,43 +349,46 @@ app.get("/health", (_req, res) => {
   });
 });
 
-(async () => {
-  const server = await registerRoutes(app);
-
-  // Error handling
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    if (isProduction) console.error("Production error:", err);
-
-    res.status(status).json({
-      message: isProduction ? "Internal Server Error" : message,
-      ...(isDevelopment && { stack: err.stack }),
-    });
-
-    if (isDevelopment) throw err;
-  });
-
-  if (isDevelopment) {
-    await setupVite(app, server);
-  } else {
-    const clientDistPath = path.join(__dirname, "../client/dist");
-    app.use(express.static(clientDistPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(clientDistPath, "index.html"));
-    });
-    log(`📦 Serving static files from: ${clientDistPath}`);
+// Create a simple server for development
+const server = {
+  close: (callback?: (err?: Error) => void) => {
+    httpServer.close(callback);
   }
+};
 
-  const port = parseInt(process.env.PORT || "5174", 10);
-  const host = isProduction ? "0.0.0.0" : "localhost";
-
-  httpServer.listen(port, host, () => {
-    log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
-    log(`🌐 Server listening on ${host}:${port}`);
-    log(`🔗 Environment: ${process.env.NODE_ENV || "development"}`);
-    if (isProduction) {
-      log(`📊 Health check available at: http://localhost:${port}/health`);
+// Setup Vite in development
+if (isDevelopment) {
+  // For development, we need to handle Vite setup differently
+  // This is a simplified version that should work with your setup
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/api')) {
+      next();
+    } else {
+      // In development, we assume Vite is running on port 5173
+      res.redirect(`http://localhost:5173${req.url}`);
     }
   });
-})();
+} else {
+  // Production: serve static files
+  const clientDistPath = path.join(__dirname, "../client/dist");
+  app.use(express.static(clientDistPath));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(clientDistPath, "index.html"));
+  });
+  log(`📦 Serving static files from: ${clientDistPath}`);
+}
+
+const port = parseInt(process.env.PORT || "5174", 10);
+const host = isProduction ? "0.0.0.0" : "localhost";
+
+httpServer.listen(port, host, () => {
+  log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
+  log(`🌐 Server listening on ${host}:${port}`);
+  log(`🔗 Environment: ${process.env.NODE_ENV || "development"}`);
+  if (isProduction) {
+    log(`📊 Health check available at: http://localhost:${port}/health`);
+  }
+});
+
+// Export for testing or other modules
+export { app, httpServer, io };
