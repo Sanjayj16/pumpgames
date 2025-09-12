@@ -1,7 +1,6 @@
-import express, { type Request, Response, NextFunction } from "express";
+import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { registerRoutes } from "./simple-routes";
 
 const app = express();
 const httpServer = createServer(app);
@@ -26,42 +25,249 @@ const io = new Server(httpServer, {
   },
 });
 
-// Map to store online users
-const onlineUsers = new Map<string, string>();
+// Map to track online users allowing multiple sockets per username
+const onlineUsers = new Map();
+// Store pending friend requests
+const friendRequests = new Map();
+// Store user's friends list
+const userFriends = new Map();
+
+// Helper function to notify a user
+function notifyUser(username, event, data) {
+  const userSockets = onlineUsers.get(username);
+  if (userSockets) {
+    userSockets.forEach(socketId => {
+      io.to(socketId).emit(event, data);
+    });
+  }
+}
 
 io.on("connection", (socket) => {
-  console.log("A user connected:", socket.id);
+  console.log("User connected:", socket.id);
 
-  // Join with username
-  socket.on("join", (username: string) => {
-    if (!username) return;
-    onlineUsers.set(username, socket.id);
-    io.emit("online-users", Array.from(onlineUsers.keys()));
+  // Listen for user joining
+  socket.on("join", (username) => {
+    if (!username) {
+      console.log('Join event received with empty username');
+      return;
+    }
+
+    if (!onlineUsers.has(username)) {
+      onlineUsers.set(username, new Set());
+    }
+    onlineUsers.get(username).add(socket.id);
+
+    const onlineUsersList = Array.from(onlineUsers.keys());
+    console.log(`User joined: ${username} with socket ${socket.id}`);
+    console.log(`Current online users:`, onlineUsersList);
+    io.emit("online-users", onlineUsersList);
+
+    // Send any pending friend requests to this user
+    const pendingRequests = friendRequests.get(username) || [];
+    if (pendingRequests.length > 0) {
+      console.log(`Sending ${pendingRequests.length} pending friend requests to ${username}`);
+      pendingRequests.forEach(request => {
+        socket.emit("friend-request", { id: request.id, username: request.from, timestamp: request.timestamp });
+      });
+    }
+
+    // Send friends list to user
+    const friends = userFriends.get(username) || new Set();
+    const friendsList = Array.from(friends).map(friend => ({
+      id: friend,
+      username: friend,
+      isOnline: onlineUsers.has(friend),
+      isPlaying: false
+    }));
+    socket.emit("friends-list", friendsList);
   });
 
-  // Send friend/game invite (include room and region)
+  // Listen for game invites
   socket.on("invite", ({ from, to, roomId, region }) => {
-    const toSocketId = onlineUsers.get(to);
-    if (toSocketId) {
-      io.to(toSocketId).emit("game-invite", { from, roomId, region });
+    const toSockets = onlineUsers.get(to);
+    if (toSockets) {
+      toSockets.forEach((socketId) => {
+        io.to(socketId).emit("game-invite", { from, roomId, region });
+      });
     }
   });
 
-  // Accept game invite
+  // Listen for invite acceptance
   socket.on("accept-invite", ({ from, to, roomId, region }) => {
-    const fromSocketId = onlineUsers.get(from);
-    if (fromSocketId) {
-      io.to(fromSocketId).emit("invite-accepted", { to, roomId, region });
+    const fromSockets = onlineUsers.get(from);
+    if (fromSockets) {
+      fromSockets.forEach((socketId) => {
+        io.to(socketId).emit("invite-accepted", { to, roomId, region });
+      });
     }
   });
 
-  // Disconnect handling
+  // Handle friend requests with acknowledgment
+  socket.on("send-friend-request", ({ from, to }, acknowledgment) => {
+    if (!from || !to || from === to) {
+      if (typeof acknowledgment === 'function') {
+        acknowledgment({ success: false, message: "Invalid friend request" });
+      }
+      return;
+    }
+    
+    const requestId = `${from}_${to}_${Date.now()}`;
+    const timestamp = new Date().toISOString();
+    
+    console.log(`Friend request attempt: ${from} -> ${to}`);
+    
+    // Add to recipient's pending requests
+    if (!friendRequests.has(to)) {
+      friendRequests.set(to, []);
+    }
+    friendRequests.get(to).push({ id: requestId, from, timestamp });
+    
+    // Notify recipient if online
+    const toSockets = onlineUsers.get(to);
+    if (toSockets && toSockets.size > 0) {
+      toSockets.forEach((socketId) => {
+        console.log(`Sending friend request to socket ${socketId} for user ${to}`);
+        const requestData = { id: requestId, username: from, timestamp };
+        io.to(socketId).emit("friend-request", requestData);
+      });
+      if (typeof acknowledgment === 'function') {
+        acknowledgment({ success: true, message: "Friend request sent" });
+      }
+    } else {
+      if (typeof acknowledgment === 'function') {
+        acknowledgment({ success: true, message: "Friend request saved - will be delivered when user is online" });
+      }
+    }
+    
+    console.log(`Friend request sent from ${from} to ${to}`);
+  });
+
+  // Handle friend request acceptance
+  socket.on("accept-friend-request", ({ from, to }) => {
+    if (!from || !to) return;
+    
+    console.log(`Friend request accepted: ${from} accepted ${to}'s request`);
+    
+    // Add to both users' friends lists
+    if (!userFriends.has(from)) {
+      userFriends.set(from, new Set());
+    }
+    if (!userFriends.has(to)) {
+      userFriends.set(to, new Set());
+    }
+    userFriends.get(from).add(to);
+    userFriends.get(to).add(from);
+    
+    // Remove from pending requests
+    if (friendRequests.has(from)) {
+      const requests = friendRequests.get(from).filter(req => req.from !== to);
+      friendRequests.set(from, requests);
+    }
+    
+    // Notify both users
+    notifyUser(from, "friend-added", { username: to });
+    notifyUser(to, "friend-added", { username: from });
+    
+    // Send updated friends lists
+    const fromFriends = Array.from(userFriends.get(from) || new Set()).map((friend) => ({
+      id: friend,
+      username: friend,
+      isOnline: onlineUsers.has(friend),
+      isPlaying: false
+    }));
+    notifyUser(from, "friends-list", fromFriends);
+    
+    const toFriends = Array.from(userFriends.get(to) || new Set()).map((friend) => ({
+      id: friend,
+      username: friend,
+      isOnline: onlineUsers.has(friend),
+      isPlaying: false
+    }));
+    notifyUser(to, "friends-list", toFriends);
+    
+    console.log(`Friendship established between ${from} and ${to}`);
+    
+    // Auto-create game room
+    const roomId = `${Math.floor(Math.random() * 100000)}`;
+    const region = "us";
+    
+    notifyUser(from, "auto-game-start", { roomId, region, friend: to });
+    notifyUser(to, "auto-game-start", { roomId, region, friend: from });
+  });
+
+  // Handle friend request decline
+  socket.on("decline-friend-request", ({ from, to }) => {
+    if (!from || !to) return;
+    
+    // Remove from pending requests
+    if (friendRequests.has(from)) {
+      const requests = friendRequests.get(from).filter(req => req.from !== to);
+      friendRequests.set(from, requests);
+    }
+    
+    console.log(`Friend request declined from ${to} to ${from}`);
+  });
+
+  // Get user's friends list
+  socket.on("get-friends", (username) => {
+    const friends = userFriends.get(username) || new Set();
+    const friendsList = Array.from(friends).map(friend => ({
+      id: friend,
+      username: friend,
+      isOnline: onlineUsers.has(friend),
+      isPlaying: false
+    }));
+    
+    socket.emit("friends-list", friendsList);
+  });
+
+  // Get user's pending friend requests
+  socket.on("get-friend-requests", (username) => {
+    const requests = friendRequests.get(username) || [];
+    socket.emit("friend-requests", requests);
+  });
+
+  // Auto-start game when both users become friends
+  socket.on("start-game-with-friend", ({ from, to, region }) => {
+    const fromSockets = onlineUsers.get(from);
+    const toSockets = onlineUsers.get(to);
+    
+    if (fromSockets && toSockets) {
+      const roomId = `${Math.floor(Math.random() * 100000)}`;
+      const gameRegion = region || 'us';
+      
+      // Notify both users to join the game
+      fromSockets.forEach((socketId) => {
+        io.to(socketId).emit("auto-game-start", { roomId, region: gameRegion, friend: to });
+      });
+      toSockets.forEach((socketId) => {
+        io.to(socketId).emit("auto-game-start", { roomId, region: gameRegion, friend: from });
+      });
+      
+      console.log(`Auto-starting game between ${from} and ${to} in room ${roomId}`);
+    }
+  });
+
+  // Handle disconnect
   socket.on("disconnect", () => {
-    onlineUsers.forEach((id, username) => {
-      if (id === socket.id) onlineUsers.delete(username);
-    });
-    io.emit("online-users", Array.from(onlineUsers.keys()));
     console.log("User disconnected:", socket.id);
+
+    for (const [username, sockets] of onlineUsers.entries()) {
+      if (sockets.has(socket.id)) {
+        sockets.delete(socket.id);
+        console.log(`Removed socket ${socket.id} from ${username}`);
+
+        if (sockets.size === 0) {
+          onlineUsers.delete(username);
+          console.log(`${username} is now offline`);
+        }
+        break;
+      }
+    }
+
+    const onlineUsersList = Array.from(onlineUsers.keys());
+    console.log(`Online users after disconnect:`, onlineUsersList);
+    io.emit("online-users", onlineUsersList);
   });
 });
 
@@ -120,29 +326,28 @@ app.get("/health", (_req, res) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "production",
+    onlineUsers: Array.from(onlineUsers.keys()).length,
+    friendRequests: Array.from(friendRequests.keys()).reduce((acc, key) => acc + (friendRequests.get(key)?.length || 0), 0),
+    userFriends: Array.from(userFriends.keys()).length
   });
 });
 
 // Serve static files
 app.use(express.static("public"));
 
-// Register routes & error handling
-(async () => {
-  const server = await registerRoutes(app);
+// Error handling
+app.use((err, _req, res, _next) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  if (isProduction) console.error("Production error:", err);
+  res.status(status).json({ message: isProduction ? "Internal Server Error" : message });
+});
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    if (isProduction) console.error("Production error:", err);
-    res.status(status).json({ message: isProduction ? "Internal Server Error" : message });
-  });
+const port = parseInt(process.env.PORT || "5174", 10);
+const host = "0.0.0.0";
 
-  const port = parseInt(process.env.PORT || "5174", 10);
-  const host = "0.0.0.0";
-
-  httpServer.listen(port, host, () => {
-    console.log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
-    console.log(`🌐 Listening on ${host}:${port}`);
-    console.log(`📊 Health check: http://localhost:${port}/health`);
-  });
-})();
+httpServer.listen(port, host, () => {
+  console.log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
+  console.log(`🌐 Listening on ${host}:${port}`);
+  console.log(`📊 Health check: http://localhost:${port}/health`);
+});
