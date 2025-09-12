@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import { registerRoutes } from "./simple-routes";
 
 const app = express();
 const httpServer = createServer(app);
@@ -336,12 +337,14 @@ app.get("/health", (_req, res) => {
 app.use(express.static("public"));
 
 // Error handling
-app.use((err, _req, res, _next) => {
-  const status = err.status || err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
-  if (isProduction) console.error("Production error:", err);
-  res.status(status).json({ message: isProduction ? "Internal Server Error" : message });
-});
+const server = await registerRoutes(app);
+
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+    if (isProduction) console.error("Production error:", err);
+    res.status(status).json({ message: isProduction ? "Internal Server Error" : message });
+  });
 
 const port = parseInt(process.env.PORT || "5174", 10);
 const host = "0.0.0.0";
