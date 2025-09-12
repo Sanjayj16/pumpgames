@@ -15,7 +15,8 @@
     "cross-env": "^10.0.0",
     "esbuild": "^0.25.9",
     "@solana/web3.js": "^1.95.3",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "tsx": "^4.19.1",
