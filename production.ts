@@ -1,7 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
 import path from "path";
-import { registerRoutes } from "./simple-routes";
-import { setupVite, serveStatic as defaultServeStatic, log } from "./vite";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { createServer } from "http";
@@ -11,9 +9,8 @@ const app = express();
 
 // Environment flags
 const isProduction = process.env.NODE_ENV === "production";
-const isDevelopment = process.env.NODE_ENV === "development";
 
-// Get directory name in a way that works for both ESM and CommonJS
+// Get directory name in a way that works for ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -26,11 +23,11 @@ const io = new Server(httpServer, {
   cors: {
     origin: isProduction
       ? [
-        process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
-        "https://harmonious-boba-11ae9e.netlify.app",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-      ]
+          process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
+          "https://harmonious-boba-11ae9e.netlify.app",
+          "http://localhost:5173",
+          "http://127.0.0.1:5173",
+        ]
       : ["http://localhost:5173", "http://localhost:3000", "*"],
     methods: ["GET", "POST"],
     credentials: true,
@@ -40,7 +37,7 @@ const io = new Server(httpServer, {
 // Map to track online users allowing multiple sockets per username
 const onlineUsers = new Map<string, Set<string>>();
 // Store pending friend requests
-const friendRequests = new Map<string, Array<{ id: string, from: string, timestamp: string }>>();
+const friendRequests = new Map<string, Array<{id: string, from: string, timestamp: string}>>();
 // Store user's friends list
 const userFriends = new Map<string, Set<string>>();
 
@@ -123,18 +120,18 @@ io.on("connection", (socket) => {
       }
       return;
     }
-
+    
     const requestId = `${from}_${to}_${Date.now()}`;
     const timestamp = new Date().toISOString();
-
+    
     console.log(`Friend request attempt: ${from} -> ${to}`);
-
+    
     // Add to recipient's pending requests
     if (!friendRequests.has(to)) {
       friendRequests.set(to, []);
     }
     friendRequests.get(to)?.push({ id: requestId, from, timestamp });
-
+    
     // Notify recipient if online
     const toSockets = onlineUsers.get(to);
     if (toSockets && toSockets.size > 0) {
@@ -151,16 +148,16 @@ io.on("connection", (socket) => {
         acknowledgment({ success: true, message: "Friend request saved - will be delivered when user is online" });
       }
     }
-
+    
     console.log(`Friend request sent from ${from} to ${to}`);
   });
 
   // Handle friend request acceptance
   socket.on("accept-friend-request", ({ from, to }) => {
     if (!from || !to) return;
-
+    
     console.log(`Friend request accepted: ${from} accepted ${to}'s request`);
-
+    
     // Add to both users' friends lists
     if (!userFriends.has(from)) {
       userFriends.set(from, new Set());
@@ -170,17 +167,17 @@ io.on("connection", (socket) => {
     }
     userFriends.get(from)?.add(to);
     userFriends.get(to)?.add(from);
-
+    
     // Remove from pending requests
     if (friendRequests.has(from)) {
       const requests = friendRequests.get(from)?.filter(req => req.from !== to) || [];
       friendRequests.set(from, requests);
     }
-
+    
     // Notify both users
     notifyUser(from, "friend-added", { username: to });
     notifyUser(to, "friend-added", { username: from });
-
+    
     // Send updated friends lists
     const fromFriends = Array.from(userFriends.get(from) || new Set<string>()).map((friend: string) => ({
       id: friend,
@@ -189,7 +186,7 @@ io.on("connection", (socket) => {
       isPlaying: false
     }));
     notifyUser(from, "friends-list", fromFriends);
-
+    
     const toFriends = Array.from(userFriends.get(to) || new Set<string>()).map((friend: string) => ({
       id: friend,
       username: friend,
@@ -197,13 +194,13 @@ io.on("connection", (socket) => {
       isPlaying: false
     }));
     notifyUser(to, "friends-list", toFriends);
-
+    
     console.log(`Friendship established between ${from} and ${to}`);
-
+    
     // Auto-create game room
     const roomId = `${Math.floor(Math.random() * 100000)}`;
     const region = "us";
-
+    
     notifyUser(from, "auto-game-start", { roomId, region, friend: to });
     notifyUser(to, "auto-game-start", { roomId, region, friend: from });
   });
@@ -211,13 +208,13 @@ io.on("connection", (socket) => {
   // Handle friend request decline
   socket.on("decline-friend-request", ({ from, to }) => {
     if (!from || !to) return;
-
+    
     // Remove from pending requests
     if (friendRequests.has(from)) {
       const requests = friendRequests.get(from)?.filter(req => req.from !== to) || [];
       friendRequests.set(from, requests);
     }
-
+    
     console.log(`Friend request declined from ${to} to ${from}`);
   });
 
@@ -230,7 +227,7 @@ io.on("connection", (socket) => {
       isOnline: onlineUsers.has(friend),
       isPlaying: false
     }));
-
+    
     socket.emit("friends-list", friendsList);
   });
 
@@ -244,11 +241,11 @@ io.on("connection", (socket) => {
   socket.on("start-game-with-friend", ({ from, to, region }) => {
     const fromSockets = onlineUsers.get(from);
     const toSockets = onlineUsers.get(to);
-
+    
     if (fromSockets && toSockets) {
       const roomId = `${Math.floor(Math.random() * 100000)}`;
       const gameRegion = region || 'us';
-
+      
       // Notify both users to join the game
       fromSockets.forEach((socketId) => {
         io.to(socketId).emit("auto-game-start", { roomId, region: gameRegion, friend: to });
@@ -256,7 +253,7 @@ io.on("connection", (socket) => {
       toSockets.forEach((socketId) => {
         io.to(socketId).emit("auto-game-start", { roomId, region: gameRegion, friend: from });
       });
-
+      
       console.log(`Auto-starting game between ${from} and ${to} in room ${roomId}`);
     }
   });
@@ -287,7 +284,12 @@ io.on("connection", (socket) => {
 // CORS middleware
 app.use((req, res, next) => {
   const allowedOrigins = isProduction
-    ? [process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app"]
+    ? [
+        process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
+        "https://harmonious-boba-11ae9e.netlify.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+      ]
     : ["*"];
   const origin = req.get("origin");
   if (allowedOrigins.includes("*") || (origin && allowedOrigins.includes(origin))) {
@@ -299,19 +301,16 @@ app.use((req, res, next) => {
     "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma"
   );
   res.header("Access-Control-Allow-Credentials", "true");
+  res.header("X-Content-Type-Options", "nosniff");
+  res.header("X-Frame-Options", "DENY");
+  res.header("X-XSS-Protection", "1; mode=block");
+  
   if (req.method === "OPTIONS") return res.status(200).end();
   next();
 });
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
-
-if (isDevelopment) {
-  app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    next();
-  });
-}
 
 // Performance logging
 app.use((req, res, next) => {
@@ -329,11 +328,11 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse && isDevelopment) {
+      if (capturedJsonResponse && !isProduction) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
       if (logLine.length > 80) logLine = logLine.slice(0, 79) + "…";
-      log(logLine);
+      console.log(logLine);
     }
   });
 
@@ -345,48 +344,51 @@ app.get("/health", (_req, res) => {
   res.status(200).json({
     status: "healthy",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development",
+    environment: process.env.NODE_ENV || "production",
+    onlineUsers: Array.from(onlineUsers.keys()).length,
+    friendRequests: Array.from(friendRequests.keys()).reduce((acc, key) => acc + (friendRequests.get(key)?.length || 0), 0),
+    userFriends: Array.from(userFriends.keys()).length
   });
 });
 
-// Create a simple server for development
-const server = {
-  close: (callback?: (err?: Error) => void) => {
-    httpServer.close(callback);
-  }
-};
-
-// Setup Vite in development
-if (isDevelopment) {
-  // For development, we need to handle Vite setup differently
-  // This is a simplified version that should work with your setup
-  app.use((req, res, next) => {
-    if (req.url.startsWith('/api')) {
-      next();
-    } else {
-      // In development, we assume Vite is running on port 5173
-      res.redirect(`http://localhost:5173${req.url}`);
-    }
-  });
-} else {
-  // Production: serve static files
+// Serve static files from client/dist in production
+if (isProduction) {
   const clientDistPath = path.join(__dirname, "../client/dist");
   app.use(express.static(clientDistPath));
   app.get("*", (_req, res) => {
     res.sendFile(path.join(clientDistPath, "index.html"));
   });
-  log(`📦 Serving static files from: ${clientDistPath}`);
+  console.log(`📦 Serving static files from: ${clientDistPath}`);
+} else {
+  // In development, we might want to redirect to Vite dev server
+  app.get("*", (_req, res) => {
+    res.redirect(`http://localhost:5173${_req.url}`);
+  });
 }
 
-const port = parseInt(process.env.PORT || "5174", 10);
+// Error handling
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  if (isProduction) console.error("Production error:", err);
+
+  res.status(status).json({
+    message: isProduction ? "Internal Server Error" : message,
+    ...(!isProduction && { stack: err.stack }),
+  });
+});
+
+const port = parseInt(process.env.PORT || "3000", 10);
 const host = isProduction ? "0.0.0.0" : "localhost";
 
 httpServer.listen(port, host, () => {
-  log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
-  log(`🌐 Server listening on ${host}:${port}`);
-  log(`🔗 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
+  console.log(`🌐 Server listening on ${host}:${port}`);
+  console.log(`🔗 Environment: ${process.env.NODE_ENV || "production"}`);
+  console.log(`📊 Health check available at: http://${host}:${port}/health`);
+  
   if (isProduction) {
-    log(`📊 Health check available at: http://localhost:${port}/health`);
+    console.log(`🌍 Frontend URL: ${process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app"}`);
   }
 });
 
