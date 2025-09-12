@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { registerRoutes } from "./simple-routes";
+import { registerRoutes } from "./simple-routes.js"; // Added .js extension
 
 const app = express();
 const httpServer = createServer(app);
@@ -336,21 +336,40 @@ app.get("/health", (_req, res) => {
 // Serve static files
 app.use(express.static("public"));
 
-// Error handling
-const server = await registerRoutes(app);
+// Register routes & error handling
+(async () => {
+  try {
+    // Register API routes
+    await registerRoutes(app);
+    
+    // Error handling middleware
+    app.use((err, _req, res, _next) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      if (isProduction) console.error("Production error:", err);
+      res.status(status).json({ 
+        message: isProduction ? "Internal Server Error" : message,
+        ...(!isProduction && { stack: err.stack })
+      });
+    });
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    if (isProduction) console.error("Production error:", err);
-    res.status(status).json({ message: isProduction ? "Internal Server Error" : message });
-  });
+    const port = parseInt(process.env.PORT || "5174", 10);
+    const host = "0.0.0.0";
 
-const port = parseInt(process.env.PORT || "5174", 10);
-const host = "0.0.0.0";
-
-httpServer.listen(port, host, () => {
-  console.log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
-  console.log(`🌐 Listening on ${host}:${port}`);
-  console.log(`📊 Health check: http://localhost:${port}/health`);
-});
+    httpServer.listen(port, host, () => {
+      console.log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
+      console.log(`🌐 Listening on ${host}:${port}`);
+      console.log(`📊 Health check: http://localhost:${port}/health`);
+      console.log(`🔌 Socket.IO path: /socket.io`);
+      console.log(`🌍 CORS allowed origins:`, isProduction ? [
+        process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
+        "https://harmonious-boba-11ae9e.netlify.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+      ] : ["*"]);
+    });
+  } catch (error) {
+    console.error("Failed to register routes:", error);
+    process.exit(1);
+  }
+})();
