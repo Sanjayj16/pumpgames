@@ -1,7 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
 import path from "path";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
 import { createServer } from "http";
 import { Server } from "socket.io";
 
@@ -10,9 +8,8 @@ const app = express();
 // Environment flags
 const isProduction = process.env.NODE_ENV === "production";
 
-// Get directory name in a way that works for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Get directory name in a way that works for both ESM and CommonJS
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
 // Create HTTP server for Socket.IO
 const httpServer = createServer(app);
@@ -35,14 +32,14 @@ const io = new Server(httpServer, {
 });
 
 // Map to track online users allowing multiple sockets per username
-const onlineUsers = new Map<string, Set<string>>();
+const onlineUsers = new Map();
 // Store pending friend requests
-const friendRequests = new Map<string, Array<{id: string, from: string, timestamp: string}>>();
+const friendRequests = new Map();
 // Store user's friends list
-const userFriends = new Map<string, Set<string>>();
+const userFriends = new Map();
 
 // Helper function to notify a user
-function notifyUser(username: string, event: string, data: any) {
+function notifyUser(username, event, data) {
   const userSockets = onlineUsers.get(username);
   if (userSockets) {
     userSockets.forEach(socketId => {
@@ -55,7 +52,7 @@ io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   // Listen for user joining
-  socket.on("join", (username: string) => {
+  socket.on("join", (username) => {
     if (!username) {
       console.log('Join event received with empty username');
       return;
@@ -179,7 +176,7 @@ io.on("connection", (socket) => {
     notifyUser(to, "friend-added", { username: from });
     
     // Send updated friends lists
-    const fromFriends = Array.from(userFriends.get(from) || new Set<string>()).map((friend: string) => ({
+    const fromFriends = Array.from(userFriends.get(from) || new Set()).map((friend) => ({
       id: friend,
       username: friend,
       isOnline: onlineUsers.has(friend),
@@ -187,7 +184,7 @@ io.on("connection", (socket) => {
     }));
     notifyUser(from, "friends-list", fromFriends);
     
-    const toFriends = Array.from(userFriends.get(to) || new Set<string>()).map((friend: string) => ({
+    const toFriends = Array.from(userFriends.get(to) || new Set()).map((friend) => ({
       id: friend,
       username: friend,
       isOnline: onlineUsers.has(friend),
@@ -316,7 +313,7 @@ app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let capturedJsonResponse = undefined;
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -353,7 +350,7 @@ app.get("/health", (_req, res) => {
 
 // Serve static files from client/dist in production
 if (isProduction) {
-  const clientDistPath = path.join(__dirname, "../client/dist");
+  const clientDistPath = path.join(process.cwd(), "client/dist");
   app.use(express.static(clientDistPath));
   app.get("*", (_req, res) => {
     res.sendFile(path.join(clientDistPath, "index.html"));
@@ -367,7 +364,7 @@ if (isProduction) {
 }
 
 // Error handling
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err, _req, res, _next) => {
   const status = err.status || err.statusCode || 500;
   const message = err.message || "Internal Server Error";
   if (isProduction) console.error("Production error:", err);
