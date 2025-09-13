@@ -151,6 +151,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Withdraw funds from user wallet endpoint
+  app.post("/api/wallet/withdraw-funds", (req, res) => {
+    try {
+      const { userId, amount } = req.body;
+
+      if (!userId || !amount) {
+        return res.status(400).json({ message: "User ID and amount required" });
+      }
+
+      if (amount <= 0) {
+        return res.status(400).json({ message: "Amount must be greater than 0" });
+      }
+
+      const users = loadUsers();
+      const userIndex = users.findIndex(u => u.id === userId);
+      
+      if (userIndex === -1) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const user = users[userIndex];
+      const currentBalance = Number(user.balance);
+
+      // Check if user has sufficient balance
+      if (currentBalance < amount) {
+        return res.status(400).json({ 
+          message: `Insufficient balance. You have $${currentBalance.toFixed(2)} but trying to withdraw $${amount.toFixed(2)}` 
+        });
+      }
+
+      // Withdraw funds from user balance
+      users[userIndex].balance = currentBalance - amount;
+      saveUsers(users);
+      
+      res.json({ 
+        success: true,
+        message: `Successfully withdrew $${amount.toFixed(2)} from your wallet`,
+        newBalance: users[userIndex].balance,
+        user: { ...users[userIndex], password: '' }
+      });
+    } catch (error) {
+      console.error('Withdraw funds error:', error);
+      res.status(500).json({ message: "Failed to withdraw funds" });
+    }
+  });
+
   // Get user wallet info endpoint
   app.get("/api/wallet/:userId", (req, res) => {
     try {
