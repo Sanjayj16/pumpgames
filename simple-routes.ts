@@ -182,12 +182,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/game/place-bet", (req, res) => {
     try {
       const { userId, betAmount } = req.body;
+      
+      console.log('Place bet request received:', { userId, betAmount, betAmountType: typeof betAmount, userIdType: typeof userId });
 
       if (!userId || !betAmount) {
+        console.log('Missing required fields:', { userId: !!userId, betAmount: !!betAmount });
         return res.status(400).json({ message: "User ID and bet amount required" });
       }
 
-      const result = placeBet(userId, betAmount);
+      // Validate betAmount is a valid number
+      const numericBetAmount = Number(betAmount);
+      if (isNaN(numericBetAmount) || numericBetAmount <= 0) {
+        console.log('Invalid bet amount:', { betAmount, numericBetAmount });
+        return res.status(400).json({ message: "Invalid bet amount" });
+      }
+
+      const result = placeBet(userId, numericBetAmount);
       
       if (result.success) {
         res.json({ 
