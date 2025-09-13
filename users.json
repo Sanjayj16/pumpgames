@@ -1,0 +1,258 @@
+[
+  {
+    "id": "1755380085296",
+    "username": "testuser",
+    "password": "password123",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1755380883497",
+    "username": "jjj",
+    "password": "123456",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1755381006611",
+    "username": "testplayer",
+    "password": "test123",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1755411118625",
+    "username": "ghhh",
+    "password": "123456",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1755411793815",
+    "username": "123",
+    "password": "123456",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-08-17T07:32:39.282Z"
+  },
+  {
+    "id": "1755428667858",
+    "username": "efef",
+    "password": "123456",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-08-17T11:15:13.677Z"
+  },
+  {
+    "id": "1755442406363",
+    "username": "afafef",
+    "password": "123456",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-08-17T15:10:45.815Z"
+  },
+  {
+    "id": "1755444165196",
+    "username": "eagaeg",
+    "password": "123456",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1755445417415",
+    "username": "sam",
+    "password": "123456",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-08-17T15:47:57.365Z"
+  },
+  {
+    "id": "1755445838905",
+    "username": "qwfqwf",
+    "password": "111111",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-08-17T15:50:50.086Z"
+  },
+  {
+    "id": "1755445966189",
+    "username": "newusername123",
+    "password": "333333",
+    "balance": 225.7,
+    "holdBalance": 15,
+    "lastDailyRewardClaim": "2025-08-18T19:28:46.795Z"
+  },
+  {
+    "id": "1756662786260",
+    "username": "harshawweb2",
+    "password": "7388139606",
+    "balance": 0.1,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-08T23:40:55.310Z"
+  },
+  {
+    "id": "1757376247018",
+    "username": "Sammy",
+    "password": "temp123",
+    "balance": 0.1818541666666671,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-09T00:04:18.226Z"
+  },
+  {
+    "id": "1757529012845",
+    "username": "test",
+    "password": "test@123",
+    "balance": 2.1541,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-10T18:33:44.368Z"
+  },
+  {
+    "id": "1757579119396",
+    "username": "cruze",
+    "password": "cruze@123",
+    "balance": 0,
+    "holdBalance": 0.1,
+    "lastDailyRewardClaim": "2025-09-11T12:13:54.601Z"
+  },
+  {
+    "id": "1757664730014",
+    "username": "test@123",
+    "password": "test@123",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1757665061125",
+    "username": "test02",
+    "password": "test02@123",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1757673894517",
+    "username": "Prasanth",
+    "password": "prasanth@123",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T10:45:05.111Z"
+  },
+  {
+    "id": "1757675542281",
+    "username": "pra",
+    "password": "pra@1234",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T11:12:41.774Z"
+  },
+  {
+    "id": "1757675693231",
+    "username": "test03",
+    "password": "test@098",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T11:15:01.712Z"
+  },
+  {
+    "id": "1757675744794",
+    "username": "akv",
+    "password": "akv@1234",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T11:15:56.598Z"
+  },
+  {
+    "id": "1757675790236",
+    "username": "akvs",
+    "password": "akvs@123",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T11:16:38.327Z"
+  },
+  {
+    "id": "1757675851419",
+    "username": "popo",
+    "password": "popo@123",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T11:17:43.114Z"
+  },
+  {
+    "id": "1757676046566",
+    "username": "popp",
+    "password": "pop@123",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T11:21:32.950Z"
+  },
+  {
+    "id": "1757683254927",
+    "username": "smith",
+    "password": "smith@123",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T13:21:02.891Z"
+  },
+  {
+    "id": "1757683306358",
+    "username": "mark",
+    "password": "mark@123",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T13:21:55.376Z"
+  },
+  {
+    "id": "1757683572003",
+    "username": "root",
+    "password": "root@123",
+    "balance": 0,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T13:26:28.223Z"
+  },
+  {
+    "id": "1757683961535",
+    "username": "jeo",
+    "password": "jeo@123",
+    "balance": 0.1386500000000003,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T13:32:50.665Z"
+  },
+  {
+    "id": "1757684160317",
+    "username": "rabada",
+    "password": "rabada@123",
+    "balance": 0.1691666666666668,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T13:36:09.397Z"
+  },
+  {
+    "id": "1757696838039",
+    "username": "ramesh",
+    "password": "ramesh@123",
+    "balance": 0.1,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T17:07:27.622Z"
+  },
+  {
+    "id": "1757697665526",
+    "username": "suresh",
+    "password": "suresh@123",
+    "balance": 0.1,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-12T17:21:15.504Z"
+  },
+  {
+    "id": "1757748131493",
+    "username": "nathi",
+    "password": "nathi@123",
+    "balance": 23,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-13T07:34:05.698Z"
+  },
+  {
+    "id": "1757751088771",
+    "username": "salt",
+    "password": "salt@123",
+    "balance": 0,
+    "holdBalance": 0
+  }
+]
