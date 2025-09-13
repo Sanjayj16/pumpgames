@@ -18,7 +18,13 @@ export function loadUsers(): SimpleUser[] {
   try {
     if (fs.existsSync(USERS_FILE)) {
       const data = fs.readFileSync(USERS_FILE, 'utf8');
-      return JSON.parse(data);
+      const users = JSON.parse(data);
+      // Ensure numeric fields are properly converted
+      return users.map((user: any) => ({
+        ...user,
+        balance: Number(user.balance),
+        holdBalance: Number(user.holdBalance)
+      }));
     }
   } catch (error) {
     console.log('No users file found, starting fresh');
@@ -179,13 +185,16 @@ export function placeBet(userId: string, betAmount: number): { success: boolean;
   const user = users[userIndex];
   
   // Check if user has sufficient balance
-  if (user.balance < betAmount) {
-    return { success: false, message: 'Insufficient balance for this bet' };
+  const userBalance = Number(user.balance);
+  console.log('Server bet validation:', { userId, userBalance, betAmount, userBalanceType: typeof user.balance, betAmountType: typeof betAmount });
+  
+  if (userBalance < betAmount) {
+    return { success: false, message: `Insufficient balance. You have $${userBalance.toFixed(2)} but need $${betAmount.toFixed(2)}` };
   }
 
   // Move money from balance to hold balance
-  users[userIndex].balance -= betAmount;
-  users[userIndex].holdBalance += betAmount;
+  users[userIndex].balance = userBalance - betAmount;
+  users[userIndex].holdBalance = Number(users[userIndex].holdBalance) + betAmount;
   
   saveUsers(users);
   
@@ -208,13 +217,14 @@ export function winBet(userId: string, betAmount: number, winnings: number): { s
   const user = users[userIndex];
   
   // Check if user has the bet amount in hold balance
-  if (user.holdBalance < betAmount) {
+  const userHoldBalance = Number(user.holdBalance);
+  if (userHoldBalance < betAmount) {
     return { success: false, message: 'Bet amount not found in hold balance' };
   }
 
   // Move bet back to main balance + add winnings
-  users[userIndex].holdBalance -= betAmount;
-  users[userIndex].balance += betAmount + winnings;
+  users[userIndex].holdBalance = userHoldBalance - betAmount;
+  users[userIndex].balance = Number(users[userIndex].balance) + betAmount + winnings;
   
   saveUsers(users);
   
@@ -237,12 +247,13 @@ export function loseBet(userId: string, betAmount: number): { success: boolean; 
   const user = users[userIndex];
   
   // Check if user has the bet amount in hold balance
-  if (user.holdBalance < betAmount) {
+  const userHoldBalance = Number(user.holdBalance);
+  if (userHoldBalance < betAmount) {
     return { success: false, message: 'Bet amount not found in hold balance' };
   }
 
   // Remove bet from hold balance (money is lost)
-  users[userIndex].holdBalance -= betAmount;
+  users[userIndex].holdBalance = userHoldBalance - betAmount;
   
   saveUsers(users);
   
