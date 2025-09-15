@@ -14,8 +14,8 @@ async function getSOLPrice(): Promise<number> {
 
 // Hot wallet addresses for receiving verified payments
 const HOT_WALLETS = {
-  SOL: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', // Your main SOL hot wallet
-  ETH: '0x742d35Cc6834C0532925a3b8D23CF56d1c5de96', // Your main ETH hot wallet
+  SOL: '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+  ETH: '0x19574FF4c4b0eE2785DbBE57944C498f33377078', // Your main ETH hot wallet
   BTC: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', // Your main BTC hot wallet
   BASE: '0x742d35Cc6834C0532925a3b8D23CF56d1c5de96', // Your main BASE hot wallet
   SUI: '0x742d35Cc6834C0532925a3b8D23CF56d1c5de96' // Your main SUI hot wallet
@@ -241,12 +241,20 @@ export async function verifyPayment(request: PaymentVerificationRequest): Promis
 
   console.log(`Verifying payment for user ${userId}, amount: $${amount}`);
 
+  // Use the provided wallet addresses or fall back to hot wallets
+  const addresses = {
+    SOL: walletAddresses?.SOL || HOT_WALLETS.SOL,
+    ETH: walletAddresses?.ETH || HOT_WALLETS.ETH,
+    BASE: walletAddresses?.BASE || HOT_WALLETS.BASE,
+    BTC: walletAddresses?.BTC || HOT_WALLETS.BTC
+  };
+
   // Check each wallet for payments
   const verificationPromises = [
-    verifySolanaPayment(walletAddresses.SOL, amount),
-    verifyEthereumPayment(walletAddresses.ETH, amount, 'ETH'),
-    verifyEthereumPayment(walletAddresses.BASE, amount, 'BASE'),
-    verifyBitcoinPayment(walletAddresses.BTC, amount),
+    verifySolanaPayment(addresses.SOL, amount),
+    verifyEthereumPayment(addresses.ETH, amount, 'ETH'),
+    verifyEthereumPayment(addresses.BASE, amount, 'BASE'),
+    verifyBitcoinPayment(addresses.BTC, amount),
     // Add SUI verification when needed
   ];
 
