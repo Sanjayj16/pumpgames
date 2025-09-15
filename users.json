@@ -110,9 +110,9 @@
     "id": "1757579119396",
     "username": "cruze",
     "password": "cruze@123",
-    "balance": 0,
-    "holdBalance": 0.1,
-    "lastDailyRewardClaim": "2025-09-11T12:13:54.601Z"
+    "balance": 107.75513333333335,
+    "holdBalance": 0.1999999999999993,
+    "lastDailyRewardClaim": "2025-09-15T11:33:03.097Z"
   },
   {
     "id": "1757664730014",
@@ -254,5 +254,20 @@
     "password": "salt@123",
     "balance": 0,
     "holdBalance": 0
+  },
+  {
+    "id": "1757789365998",
+    "username": "jiii",
+    "password": "jiii@123",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1757900000000",
+    "username": "richplayer",
+    "password": "rich@9486",
+    "balance": 9486,
+    "holdBalance": 0,
+    "lastDailyRewardClaim": "2025-09-15T00:00:00.000Z"
   }
 ]
