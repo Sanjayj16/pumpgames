@@ -321,6 +321,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      if (amount <= 0 || amount > 10000) {
+        return res.status(400).json({
+          verified: false,
+          message: 'Invalid amount. Must be between $0.01 and $10,000'
+        });
+      }
+
       console.log(`Payment verification request:`, { amount, userId, walletAddresses });
       
       const verificationResult = await verifyPayment({
@@ -341,8 +348,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const userIndex = users.findIndex((u: any) => u.id === userId);
           
           if (userIndex >= 0) {
-            users[userIndex].balance = (users[userIndex].balance || 0) + amount;
+            const oldBalance = users[userIndex].balance || 0;
+            users[userIndex].balance = oldBalance + amount;
             fs.writeFileSync(usersPath, JSON.stringify(users, null, 2));
+            
+            console.log(`✅ Payment verified and balance updated: User ${userId}, Amount: $${amount}, Old Balance: $${oldBalance}, New Balance: $${users[userIndex].balance}`);
             
             res.json({
               verified: true,
@@ -352,6 +362,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               newBalance: users[userIndex].balance
             });
           } else {
+            console.error(`❌ User not found: ${userId}`);
             res.status(404).json({
               verified: false,
               message: 'User not found'
@@ -365,16 +376,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       } else {
+        console.log(`❌ No payment found for user ${userId}, amount: $${amount}`);
         res.json({
           verified: false,
-          message: 'No valid payment found for the specified amount'
+          message: 'No valid payment found for the specified amount. Please ensure your transaction is confirmed and try again.'
         });
       }
     } catch (error) {
       console.error('Payment verification error:', error);
       res.status(500).json({ 
         verified: false, 
-        message: 'Payment verification failed' 
+        message: 'Payment verification failed due to server error' 
       });
     }
   });
