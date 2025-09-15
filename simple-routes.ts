@@ -328,13 +328,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      console.log(`Payment verification request:`, { amount, userId, walletAddresses });
+      console.log(`🔍 [API] Payment verification request received:`, { amount, userId, walletAddresses });
       
       const verificationResult = await verifyPayment({
         amount,
         walletAddresses,
         userId
       });
+      
+      console.log(`🔍 [API] Payment verification result:`, verificationResult);
       
       if (verificationResult.verified) {
         // Update user balance - find user by userId and add amount
