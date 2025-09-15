@@ -151,52 +151,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Withdraw funds from user wallet endpoint
-  app.post("/api/wallet/withdraw-funds", (req, res) => {
-    try {
-      const { userId, amount } = req.body;
-
-      if (!userId || !amount) {
-        return res.status(400).json({ message: "User ID and amount required" });
-      }
-
-      if (amount <= 0) {
-        return res.status(400).json({ message: "Amount must be greater than 0" });
-      }
-
-      const users = loadUsers();
-      const userIndex = users.findIndex(u => u.id === userId);
-      
-      if (userIndex === -1) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const user = users[userIndex];
-      const currentBalance = Number(user.balance);
-
-      // Check if user has sufficient balance
-      if (currentBalance < amount) {
-        return res.status(400).json({ 
-          message: `Insufficient balance. You have $${currentBalance.toFixed(2)} but trying to withdraw $${amount.toFixed(2)}` 
-        });
-      }
-
-      // Withdraw funds from user balance
-      users[userIndex].balance = currentBalance - amount;
-      saveUsers(users);
-      
-      res.json({ 
-        success: true,
-        message: `Successfully withdrew $${amount.toFixed(2)} from your wallet`,
-        newBalance: users[userIndex].balance,
-        user: { ...users[userIndex], password: '' }
-      });
-    } catch (error) {
-      console.error('Withdraw funds error:', error);
-      res.status(500).json({ message: "Failed to withdraw funds" });
-    }
-  });
-
   // Get user wallet info endpoint
   app.get("/api/wallet/:userId", (req, res) => {
     try {
@@ -228,22 +182,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/game/place-bet", (req, res) => {
     try {
       const { userId, betAmount } = req.body;
-      
-      console.log('Place bet request received:', { userId, betAmount, betAmountType: typeof betAmount, userIdType: typeof userId });
 
       if (!userId || !betAmount) {
-        console.log('Missing required fields:', { userId: !!userId, betAmount: !!betAmount });
         return res.status(400).json({ message: "User ID and bet amount required" });
       }
 
-      // Validate betAmount is a valid number
-      const numericBetAmount = Number(betAmount);
-      if (isNaN(numericBetAmount) || numericBetAmount <= 0) {
-        console.log('Invalid bet amount:', { betAmount, numericBetAmount });
-        return res.status(400).json({ message: "Invalid bet amount" });
-      }
-
-      const result = placeBet(userId, numericBetAmount);
+      const result = placeBet(userId, betAmount);
       
       if (result.success) {
         res.json({ 
@@ -321,22 +265,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      if (amount <= 0 || amount > 10000) {
-        return res.status(400).json({
-          verified: false,
-          message: 'Invalid amount. Must be between $0.01 and $10,000'
-        });
-      }
-
-      console.log(`🔍 [API] Payment verification request received:`, { amount, userId, walletAddresses });
+      console.log(`Payment verification request:`, { amount, userId, walletAddresses });
       
       const verificationResult = await verifyPayment({
         amount,
         walletAddresses,
         userId
       });
-      
-      console.log(`🔍 [API] Payment verification result:`, verificationResult);
       
       if (verificationResult.verified) {
         // Update user balance - find user by userId and add amount
@@ -350,11 +285,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const userIndex = users.findIndex((u: any) => u.id === userId);
           
           if (userIndex >= 0) {
-            const oldBalance = users[userIndex].balance || 0;
-            users[userIndex].balance = oldBalance + amount;
+            users[userIndex].balance = (users[userIndex].balance || 0) + amount;
             fs.writeFileSync(usersPath, JSON.stringify(users, null, 2));
-            
-            console.log(`✅ Payment verified and balance updated: User ${userId}, Amount: $${amount}, Old Balance: $${oldBalance}, New Balance: $${users[userIndex].balance}`);
             
             res.json({
               verified: true,
@@ -364,7 +296,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
               newBalance: users[userIndex].balance
             });
           } else {
-            console.error(`❌ User not found: ${userId}`);
             res.status(404).json({
               verified: false,
               message: 'User not found'
@@ -378,17 +309,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       } else {
-        console.log(`❌ No payment found for user ${userId}, amount: $${amount}`);
         res.json({
           verified: false,
-          message: 'No valid payment found for the specified amount. Please ensure your transaction is confirmed and try again.'
+          message: 'No valid payment found for the specified amount'
         });
       }
     } catch (error) {
       console.error('Payment verification error:', error);
       res.status(500).json({ 
         verified: false, 
-        message: 'Payment verification failed due to server error' 
+        message: 'Payment verification failed' 
       });
     }
   });
