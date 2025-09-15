@@ -1,32 +1,24 @@
-import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 
-// Get current crypto prices from CoinGecko
-async function getCryptoPrice(coinId: string): Promise<number> {
+// Get current SOL price from CoinGecko
+async function getSOLPrice(): Promise<number> {
   try {
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`
-    );
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
     const data = await response.json();
-    return data[coinId]?.usd || 0;
+    return data.solana?.usd || 100; // Fallback to $100 if API fails
   } catch (error) {
-    console.error(`Failed to fetch ${coinId} price:`, error);
-    // Fallback prices
-    const fallbackPrices: Record<string, number> = {
-      solana: 100,
-      ethereum: 2500,
-      bitcoin: 45000,
-    };
-    return fallbackPrices[coinId] || 0;
+    console.error('Failed to fetch SOL price:', error);
+    return 100; // Fallback price
   }
 }
 
 // Hot wallet addresses for receiving verified payments
 const HOT_WALLETS = {
-  SOL: '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
-  ETH: '0x19574FF4c4b0eE2785DbBE57944C498f33377078',
-  BTC: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
-  BASE: '0x742d35Cc6834C0532925a3b8D23CF56d1c5de96',
-  SUI: '0x742d35Cc6834C0532925a3b8D23CF56d1c5de96'
+  SOL: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', // Your main SOL hot wallet
+  ETH: '0x742d35Cc6834C0532925a3b8D23CF56d1c5de96', // Your main ETH hot wallet
+  BTC: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh', // Your main BTC hot wallet
+  BASE: '0x742d35Cc6834C0532925a3b8D23CF56d1c5de96', // Your main BASE hot wallet
+  SUI: '0x742d35Cc6834C0532925a3b8D23CF56d1c5de96' // Your main SUI hot wallet
 };
 
 interface PaymentVerificationRequest {
@@ -43,94 +35,80 @@ interface PaymentVerificationResult {
   confirmations?: number;
 }
 
-// Solana payment verification with improved logic
+// Solana payment verification
 async function verifySolanaPayment(
   walletAddress: string,
   expectedAmount: number,
   timeWindow: number = 30 * 60 * 1000 // 30 minutes
 ): Promise<PaymentVerificationResult> {
   try {
-    console.log(`🔍 [PAYMENT_VERIFY] Starting Solana verification for wallet: ${walletAddress}`);
-    console.log(`🔍 [PAYMENT_VERIFY] Expected amount: $${expectedAmount}`);
+    console.log(`🔍 Checking Solana blockchain for payments to ${walletAddress} (expecting $${expectedAmount})`);
 
-    // Get current SOL price
-    const solPrice = await getCryptoPrice('solana');
+    // Get current SOL price for better accuracy
+    const solPrice = await getSOLPrice();
     const expectedSOL = expectedAmount / solPrice;
-    console.log(`💰 [PAYMENT_VERIFY] Current SOL price: $${solPrice.toFixed(2)}`);
-    console.log(`💰 [PAYMENT_VERIFY] Expected SOL amount: ${expectedSOL.toFixed(4)} SOL`);
+    console.log(`💰 Current SOL price: $${solPrice.toFixed(2)}, Expected SOL amount: ${expectedSOL.toFixed(4)} SOL`);
 
-    // Use mainnet in production
     const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+    // const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
     const publicKey = new PublicKey(walletAddress);
 
-    console.log(`🌐 [PAYMENT_VERIFY] Fetching Solana transactions...`);
+    console.log(`🌐 Fetching Solana transactions...`);
 
     // Get recent transactions
     const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 50 });
     const cutoffTime = Date.now() - timeWindow;
 
-    console.log(`📋 [PAYMENT_VERIFY] Found ${signatures.length} recent Solana signatures`);
+    console.log(`📋 Found ${signatures.length} recent Solana signatures`);
 
     for (const sig of signatures) {
-      console.log(`🔍 [PAYMENT_VERIFY] Checking transaction: ${sig.signature}`);
-      
       if (sig.blockTime && sig.blockTime * 1000 > cutoffTime) {
-        console.log(`⏰ [PAYMENT_VERIFY] Transaction is within time window`);
-        
         const transaction = await connection.getTransaction(sig.signature, {
           commitment: 'confirmed',
           maxSupportedTransactionVersion: 0
         });
 
         if (transaction && transaction.meta) {
-          // Calculate total incoming SOL
-          let totalIncoming = 0;
-          
-          // Check all transfers to our wallet
-          const accountKeys = transaction.transaction.message.getAccountKeys().staticAccountKeys;
-          for (let i = 0; i < accountKeys.length; i++) {
-            const accountKey = accountKeys[i].toString();
-            
-            if (accountKey === walletAddress) {
-              const balanceChange = (transaction.meta.postBalances[i] - transaction.meta.preBalances[i]) / LAMPORTS_PER_SOL;
-              
-              if (balanceChange > 0) {
-                totalIncoming += balanceChange;
-                console.log(`💰 [PAYMENT_VERIFY] Incoming: ${balanceChange} SOL from account ${i}`);
+          // Check if this transaction involves a transfer to our wallet
+          const preBalances = transaction.meta.preBalances;
+          const postBalances = transaction.meta.postBalances;
+
+          for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
+            if (transaction.transaction.message.staticAccountKeys[i].toString() === walletAddress) {
+              const balanceChange = (postBalances[i] - preBalances[i]) / 1e9; // Convert from lamports to SOL
+
+              if (balanceChange > 0) { // Only positive balance changes (incoming)
+                const estimatedUSD = balanceChange * solPrice;
+
+                console.log(`💰 Solana received: ${balanceChange} SOL (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
+
+                // Check if the amount matches (within 15% tolerance for price fluctuations)
+                if (Math.abs(estimatedUSD - expectedAmount) <= expectedAmount * 0.15) {
+                  console.log(`✅ Solana payment verified! Transaction: ${sig.signature}`);
+                  return {
+                    verified: true,
+                    transactionHash: sig.signature,
+                    currency: 'SOL',
+                    amount: estimatedUSD,
+                    confirmations: sig.confirmationStatus === 'confirmed' ? 1 : 0
+                  };
+                }
               }
-            }
-          }
-
-          if (totalIncoming > 0) {
-            const estimatedUSD = totalIncoming * solPrice;
-            console.log(`💰 [PAYMENT_VERIFY] Total incoming: ${totalIncoming} SOL (~$${estimatedUSD.toFixed(2)})`);
-
-            // Check if the amount matches (within 15% tolerance)
-            if (Math.abs(estimatedUSD - expectedAmount) <= expectedAmount * 0.15) {
-              console.log(`✅ [PAYMENT_VERIFY] SOLANA PAYMENT VERIFIED!`);
-              
-              return {
-                verified: true,
-                transactionHash: sig.signature,
-                currency: 'SOL',
-                amount: estimatedUSD,
-                confirmations: sig.confirmationStatus === 'confirmed' ? 1 : 0
-              };
             }
           }
         }
       }
     }
 
-    console.log(`❌ [PAYMENT_VERIFY] NO MATCHING SOLANA PAYMENT FOUND`);
+    console.log(`❌ No matching Solana payment found for $${expectedAmount}`);
     return { verified: false };
   } catch (error) {
-    console.error(`❌ [PAYMENT_VERIFY] Solana verification error:`, error);
+    console.error(`❌ Solana verification error:`, error);
     return { verified: false };
   }
 }
 
-// Ethereum/Base payment verification with real-time pricing
+// Ethereum/Base payment verification
 async function verifyEthereumPayment(
   walletAddress: string,
   expectedAmount: number,
@@ -139,8 +117,8 @@ async function verifyEthereumPayment(
   try {
     console.log(`🔍 Checking ${network} blockchain for payments to ${walletAddress} (expecting $${expectedAmount})`);
 
-    // Use environment variable for API key
-    const apiKey = process.env.ETHERSCAN_API_KEY || 'YourEtherscanAPIKey';
+    // Use Etherscan API for real verification
+    const apiKey = 'YourEtherscanAPIKey'; // You'll need to get this from etherscan.io
     const baseUrl = network === 'ETH'
       ? 'https://api.etherscan.io/api'
       : 'https://api.basescan.org/api';
@@ -157,23 +135,18 @@ async function verifyEthereumPayment(
       return { verified: false };
     }
 
-    // Get current ETH price
-    const ethPrice = await getCryptoPrice('ethereum');
-    
     // Check transactions from last 30 minutes
     const thirtyMinutesAgo = Math.floor(Date.now() / 1000) - (30 * 60);
     const recentTxs = data.result.filter((tx: any) =>
-      parseInt(tx.timeStamp) > thirtyMinutesAgo && 
-      tx.to.toLowerCase() === walletAddress.toLowerCase() &&
-      tx.isError === '0'
+      parseInt(tx.timeStamp) > thirtyMinutesAgo && tx.to.toLowerCase() === walletAddress.toLowerCase()
     );
 
     console.log(`📋 Found ${recentTxs.length} recent transactions to ${walletAddress}`);
 
     for (const tx of recentTxs) {
-      // Convert wei to ETH and then to USD using real-time price
+      // Convert wei to ETH and then to approximate USD
       const ethAmount = parseFloat(tx.value) / 1e18;
-      const estimatedUSD = ethAmount * ethPrice;
+      const estimatedUSD = ethAmount * 2500; // Rough ETH price estimate
 
       console.log(`💰 Transaction: ${ethAmount} ETH (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
 
@@ -199,7 +172,7 @@ async function verifyEthereumPayment(
   }
 }
 
-// Bitcoin payment verification with real-time pricing
+// Bitcoin payment verification
 async function verifyBitcoinPayment(
   walletAddress: string,
   expectedAmount: number
@@ -207,7 +180,7 @@ async function verifyBitcoinPayment(
   try {
     console.log(`🔍 Checking Bitcoin blockchain for payments to ${walletAddress} (expecting $${expectedAmount})`);
 
-    // Use BlockCypher API for BTC verification
+    // Use BlockCypher API for real BTC verification
     const url = `https://api.blockcypher.com/v1/btc/main/addrs/${walletAddress}/txs?limit=50`;
 
     console.log(`🌐 Fetching Bitcoin transactions...`);
@@ -219,9 +192,6 @@ async function verifyBitcoinPayment(
       return { verified: false };
     }
 
-    // Get current BTC price
-    const btcPrice = await getCryptoPrice('bitcoin');
-    
     // Check transactions from last 30 minutes
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
     const recentTxs = data.txs.filter((tx: any) => {
@@ -235,9 +205,9 @@ async function verifyBitcoinPayment(
       // Check if this transaction sends BTC to our address
       for (const output of tx.outputs) {
         if (output.addresses && output.addresses.includes(walletAddress)) {
-          // Convert satoshis to BTC and then to USD using real-time price
+          // Convert satoshis to BTC and then to approximate USD
           const btcAmount = output.value / 1e8;
-          const estimatedUSD = btcAmount * btcPrice;
+          const estimatedUSD = btcAmount * 45000; // Rough BTC price estimate
 
           console.log(`💰 Bitcoin received: ${btcAmount} BTC (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
 
@@ -269,68 +239,34 @@ async function verifyBitcoinPayment(
 export async function verifyPayment(request: PaymentVerificationRequest): Promise<PaymentVerificationResult> {
   const { amount, walletAddresses, userId } = request;
 
-  console.log(`🔍 [PAYMENT_VERIFY] ==========================================`);
-  console.log(`🔍 [PAYMENT_VERIFY] STARTING PAYMENT VERIFICATION`);
-  console.log(`🔍 [PAYMENT_VERIFY] User ID: ${userId}`);
-  console.log(`🔍 [PAYMENT_VERIFY] Amount: $${amount}`);
-  console.log(`🔍 [PAYMENT_VERIFY] ==========================================`);
-
-  // Use the provided wallet addresses or fall back to hot wallets
-  const addresses = {
-    SOL: walletAddresses?.SOL || HOT_WALLETS.SOL,
-    ETH: walletAddresses?.ETH || HOT_WALLETS.ETH,
-    BASE: walletAddresses?.BASE || HOT_WALLETS.BASE,
-    BTC: walletAddresses?.BTC || HOT_WALLETS.BTC
-  };
-
-  console.log(`🔍 [PAYMENT_VERIFY] Using addresses:`, addresses);
+  console.log(`Verifying payment for user ${userId}, amount: $${amount}`);
 
   // Check each wallet for payments
   const verificationPromises = [
-    verifySolanaPayment(addresses.SOL, amount),
-    verifyEthereumPayment(addresses.ETH, amount, 'ETH'),
-    verifyEthereumPayment(addresses.BASE, amount, 'BASE'),
-    verifyBitcoinPayment(addresses.BTC, amount),
+    verifySolanaPayment(walletAddresses.SOL, amount),
+    verifyEthereumPayment(walletAddresses.ETH, amount, 'ETH'),
+    verifyEthereumPayment(walletAddresses.BASE, amount, 'BASE'),
+    verifyBitcoinPayment(walletAddresses.BTC, amount),
+    // Add SUI verification when needed
   ];
 
   try {
-    console.log(`🔍 [PAYMENT_VERIFY] Running verification for all currencies...`);
     const results = await Promise.allSettled(verificationPromises);
 
-    console.log(`🔍 [PAYMENT_VERIFY] Verification results:`, results.map((r, i) => ({
-      currency: ['SOL', 'ETH', 'BASE', 'BTC'][i],
-      status: r.status,
-      verified: r.status === 'fulfilled' ? r.value.verified : false
-    })));
-
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      const currency = ['SOL', 'ETH', 'BASE', 'BTC'][i];
-      
+    for (const result of results) {
       if (result.status === 'fulfilled' && result.value.verified) {
-        console.log(`✅ [PAYMENT_VERIFY] PAYMENT VERIFIED ON ${currency}!`);
-        console.log(`✅ [PAYMENT_VERIFY] Details:`, result.value);
+        console.log(`Payment verified:`, result.value);
 
-        // Transfer funds from deposit wallet to hot wallet
+        // TODO: Transfer funds from deposit wallet to hot wallet
         await transferToHotWallet(result.value);
 
-        console.log(`✅ [PAYMENT_VERIFY] ==========================================`);
-        console.log(`✅ [PAYMENT_VERIFY] PAYMENT VERIFICATION SUCCESSFUL`);
-        console.log(`✅ [PAYMENT_VERIFY] ==========================================`);
         return result.value;
-      } else if (result.status === 'rejected') {
-        console.log(`❌ [PAYMENT_VERIFY] ${currency} verification failed:`, result.reason);
-      } else {
-        console.log(`❌ [PAYMENT_VERIFY] ${currency} verification returned no payment`);
       }
     }
 
-    console.log(`❌ [PAYMENT_VERIFY] ==========================================`);
-    console.log(`❌ [PAYMENT_VERIFY] NO PAYMENT FOUND ON ANY CURRENCY`);
-    console.log(`❌ [PAYMENT_VERIFY] ==========================================`);
     return { verified: false };
   } catch (error) {
-    console.error(`❌ [PAYMENT_VERIFY] Payment verification failed:`, error);
+    console.error('Payment verification failed:', error);
     return { verified: false };
   }
 }
@@ -341,11 +277,20 @@ async function transferToHotWallet(payment: PaymentVerificationResult): Promise<
     console.log(`Transferring ${payment.amount} ${payment.currency} to hot wallet`);
 
     // In production, implement actual transfer logic here
-    // This would involve creating, signing, and broadcasting transactions
+    // For Solana: Create and send transfer transaction
+    // For Ethereum: Create ERC-20 transfer or native ETH transfer
+    // For Bitcoin: Create UTXO transaction
+
+    // This would involve:
+    // 1. Creating a transaction from the deposit wallet to hot wallet
+    // 2. Signing with the deposit wallet's private key
+    // 3. Broadcasting the transaction
+    // 4. Waiting for confirmation
 
     console.log(`Successfully transferred ${payment.amount} ${payment.currency} to hot wallet`);
   } catch (error) {
     console.error('Hot wallet transfer failed:', error);
+    // In production, you might want to retry or alert admins
   }
 }
 
