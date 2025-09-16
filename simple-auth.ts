@@ -11,6 +11,8 @@ interface SimpleUser {
   holdBalance: number; // Money on hold from active bets
   id: string;
   lastDailyRewardClaim?: string; // ISO date string
+  gamesPlayedToday?: number; // Number of games played today
+  lastGameDate?: string; // Date of last game played (ISO string)
 }
 
 // Load users from file
@@ -261,5 +263,36 @@ export function loseBet(userId: string, betAmount: number): { success: boolean; 
     success: true,
     message: `Lost bet of $${betAmount.toFixed(2)}`,
     user: { ...users[userIndex], password: '' }
+  };
+}
+
+// Track game played for daily reward eligibility
+export function trackGamePlayed(userId: string): { success: boolean; message: string; user?: SimpleUser } {
+  const users = loadUsers();
+  const userIndex = users.findIndex(u => u.id === userId);
+  
+  if (userIndex === -1) {
+    return { success: false, message: 'User not found' };
+  }
+
+  const user = users[userIndex];
+  const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD format
+  const lastGameDate = user.lastGameDate ? user.lastGameDate.split('T')[0] : null;
+
+  // If it's a new day, reset games played count
+  if (lastGameDate !== today) {
+    user.gamesPlayedToday = 1;
+  } else {
+    user.gamesPlayedToday = (user.gamesPlayedToday || 0) + 1;
+  }
+
+  user.lastGameDate = new Date().toISOString();
+  users[userIndex] = user;
+  saveUsers(users);
+
+  return { 
+    success: true, 
+    message: 'Game tracked successfully',
+    user: { ...user, password: '' } // Don't return password
   };
 }
