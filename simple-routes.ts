@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeBet, winBet, loseBet, loadUsers, saveUsers } from "./simple-auth";
+import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeBet, winBet, loseBet, loadUsers, saveUsers, trackGamePlayed } from "./simple-auth";
 import { verifyPayment } from './payment-verification';
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -215,6 +215,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = winBet(userId, betAmount, winnings);
       
       if (result.success) {
+        // Track that the user played a game
+        trackGamePlayed(userId);
+        
         res.json({ 
           user: result.user,
           message: result.message 
@@ -240,6 +243,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = loseBet(userId, betAmount);
       
       if (result.success) {
+        // Track that the user played a game
+        trackGamePlayed(userId);
+        
         res.json({ 
           user: result.user,
           message: result.message 
