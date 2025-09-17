@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeBet, winBet, loseBet, loadUsers, saveUsers, trackGamePlayed } from "./simple-auth";
+import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeBet, winBet, loseBet, loadUsers, saveUsers, trackGamePlayed, migrateHasPlayedGame } from "./simple-auth";
 import { verifyPayment } from './payment-verification';
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -59,6 +59,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Simple logout
   app.post("/api/auth/logout", (req, res) => {
     res.json({ message: "Logged out successfully" });
+  });
+
+  // Migration endpoint to fix existing users who have played games but don't have hasPlayedGame field
+  app.post("/api/auth/migrate-has-played-game", (req, res) => {
+    try {
+      const result = migrateHasPlayedGame();
+      res.json({ 
+        success: result.success,
+        message: result.message,
+        migratedCount: result.migratedCount
+      });
+    } catch (error) {
+      console.error('Migration error:', error);
+      res.status(500).json({ 
+        success: false,
+        message: "Migration failed",
+        migratedCount: 0
+      });
+    }
   });
 
   // Daily reward endpoint
