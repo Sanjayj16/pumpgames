@@ -13,6 +13,7 @@ interface SimpleUser {
   lastDailyRewardClaim?: string; // ISO date string
   gamesPlayedToday?: number; // Number of games played today
   lastGameDate?: string; // Date of last game played (ISO string)
+  hasPlayedGame?: boolean; // Whether user has ever played a game (enables daily rewards)
 }
 
 // Load users from file
@@ -266,6 +267,33 @@ export function loseBet(userId: string, betAmount: number): { success: boolean; 
   };
 }
 
+// Migrate existing users who have played games but don't have hasPlayedGame field
+export function migrateHasPlayedGame(): { success: boolean; message: string; migratedCount: number } {
+  const users = loadUsers();
+  let migratedCount = 0;
+  
+  for (let i = 0; i < users.length; i++) {
+    const user = users[i];
+    // If user has played games but doesn't have hasPlayedGame field, set it to true
+    if ((user.gamesPlayedToday && user.gamesPlayedToday > 0) || user.lastGameDate) {
+      if (user.hasPlayedGame === undefined) {
+        users[i].hasPlayedGame = true;
+        migratedCount++;
+      }
+    }
+  }
+  
+  if (migratedCount > 0) {
+    saveUsers(users);
+  }
+  
+  return {
+    success: true,
+    message: `Migration completed. ${migratedCount} users updated.`,
+    migratedCount
+  };
+}
+
 // Track game played for daily reward eligibility
 export function trackGamePlayed(userId: string): { success: boolean; message: string; user?: SimpleUser } {
   const users = loadUsers();
@@ -278,6 +306,9 @@ export function trackGamePlayed(userId: string): { success: boolean; message: st
   const user = users[userIndex];
   const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD format
   const lastGameDate = user.lastGameDate ? user.lastGameDate.split('T')[0] : null;
+
+  // Mark that user has played a game (enables daily rewards forever)
+  user.hasPlayedGame = true;
 
   // If it's a new day, reset games played count
   if (lastGameDate !== today) {
