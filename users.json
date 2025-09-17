@@ -110,9 +110,12 @@
     "id": "1757579119396",
     "username": "cruze",
     "password": "cruze@123",
-    "balance": 107.75513333333335,
-    "holdBalance": 0.1999999999999993,
-    "lastDailyRewardClaim": "2025-09-15T11:33:03.097Z"
+    "balance": 79.75513333333335,
+    "holdBalance": 11.2,
+    "lastDailyRewardClaim": "2025-09-15T11:33:03.097Z",
+    "gamesPlayedToday": 1,
+    "lastGameDate": "2025-09-17T07:04:13.480Z",
+    "hasPlayedGame": true
   },
   {
     "id": "1757664730014",
@@ -266,8 +269,46 @@
     "id": "1757900000000",
     "username": "richplayer",
     "password": "rich@9486",
-    "balance": 9486,
+    "balance": 9405.436249999999,
+    "holdBalance": 64,
+    "lastDailyRewardClaim": "2025-09-15T00:00:00.000Z",
+    "gamesPlayedToday": 26,
+    "lastGameDate": "2025-09-16T21:49:11.580Z",
+    "hasPlayedGame": true
+  },
+  {
+    "id": "1758003136833",
+    "username": "test009",
+    "password": "test009@123",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1758003819483",
+    "username": "vijay",
+    "password": "vijay@123",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1758093178104",
+    "username": "yyy",
+    "password": "yyy@1234",
+    "balance": 0,
     "holdBalance": 0,
-    "lastDailyRewardClaim": "2025-09-15T00:00:00.000Z"
+    "gamesPlayedToday": 1,
+    "lastGameDate": "2025-09-17T07:13:36.849Z",
+    "hasPlayedGame": true
+  },
+  {
+    "id": "1758093390984",
+    "username": "mmm",
+    "password": "mmm@1234",
+    "balance": 0.1,
+    "holdBalance": 0,
+    "gamesPlayedToday": 2,
+    "lastGameDate": "2025-09-17T07:25:54.284Z",
+    "hasPlayedGame": true,
+    "lastDailyRewardClaim": "2025-09-17T07:26:02.922Z"
   }
 ]
