@@ -689,8 +689,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Check if payment session has expired (30 minutes)
-      if (Date.now() - paymentSession.createdAt > 30 * 60 * 1000) {
+      // Check if payment session has expired (60 minutes - increased for slower verification)
+      if (Date.now() - paymentSession.createdAt > 60 * 60 * 1000) {
         console.log(`⏰ Payment session expired: ${paymentSessionId}`);
         return res.status(400).json({
           verified: false,
