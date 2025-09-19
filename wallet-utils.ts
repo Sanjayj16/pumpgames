@@ -4,11 +4,18 @@ import bs58 from 'bs58';
 // Your main wallet private key (base58 encoded)
 const MAIN_WALLET_PRIVATE_KEY = 'PPDmTNT9eFTRfbEMr7ZxmAyJe2SZEVRSQv3ZQg4dMFxBGaqGMfnLKT5zrAjK6bwEjSinoK5o6gnENJpbqBpxFGv';
 
-// Solana RPC endpoints (with fallbacks for rate limiting)
+// Solana RPC endpoints (avoiding blocked endpoints for production)
 const SOLANA_RPC_URLS = [
+  'https://api.mainnet-beta.solana.com', // Primary Solana endpoint
+  'https://rpc.ankr.com/solana', // Ankr endpoint (more reliable)
+  'https://solana-api.projectserum.com', // Project Serum endpoint
+  'https://solana-mainnet.g.alchemy.com/v2/demo' // Alchemy (last resort - often blocked)
+];
+
+// Production-safe RPC endpoints (avoiding Cloudflare-protected endpoints)
+const PRODUCTION_RPC_URLS = [
   'https://api.mainnet-beta.solana.com',
   'https://rpc.ankr.com/solana',
-  'https://solana-mainnet.g.alchemy.com/v2/demo',
   'https://solana-api.projectserum.com'
 ];
 
@@ -47,17 +54,23 @@ function switchRpcEndpoint(): void {
 
 // Function to get a fresh RPC connection with better error handling
 function getFreshRpcConnection(): Connection {
-  const randomIndex = Math.floor(Math.random() * SOLANA_RPC_URLS.length);
-  const selectedUrl = SOLANA_RPC_URLS[randomIndex];
+  // Use production-safe endpoints to avoid IP blocking
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
+  const endpoints = isProduction ? PRODUCTION_RPC_URLS : SOLANA_RPC_URLS;
   
-  console.log(`🔄 Creating fresh RPC connection to ${selectedUrl}`);
+  const randomIndex = Math.floor(Math.random() * endpoints.length);
+  const selectedUrl = endpoints[randomIndex];
+  
+  console.log(`🔄 Creating fresh RPC connection to ${selectedUrl} (${isProduction ? 'production' : 'development'} mode)`);
   
   return new Connection(selectedUrl, {
     commitment: 'confirmed',
     disableRetryOnRateLimit: false,
-    confirmTransactionInitialTimeout: 15000,
+    confirmTransactionInitialTimeout: 20000, // Increased timeout
     httpHeaders: {
-      'User-Agent': 'PumpGame-Payment-Verification/1.0'
+      'User-Agent': 'PumpGame-Payment-Verification/1.0',
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
     }
   });
 }
@@ -154,28 +167,44 @@ export async function checkPaymentToUserAddress(
     const solPrice = await getSOLPrice();
     console.log(`💱 Current SOL price: $${solPrice}`);
     
-    // Use fresh RPC connection to avoid rate limiting
-    const freshConnection = getFreshRpcConnection();
+    // Try multiple RPC endpoints with better error handling
+    const endpoints = process.env.NODE_ENV === 'production' || process.env.RENDER ? PRODUCTION_RPC_URLS : SOLANA_RPC_URLS;
+    let signatures = null;
+    let lastError = null;
     
-    // Get signatures with error handling
-    let signatures;
-    try {
-      signatures = await freshConnection.getSignaturesForAddress(publicKey, {
-        limit: 5 // Further reduced to 5 to avoid rate limiting
-      });
-    } catch (rpcError: any) {
-      console.error('❌ RPC error getting signatures:', rpcError.message);
-      
-      // Try with main connection as fallback
+    for (const endpoint of endpoints) {
       try {
-        signatures = await connection.getSignaturesForAddress(publicKey, {
-          limit: 3 // Even smaller limit for fallback
+        console.log(`🔄 Trying RPC endpoint: ${endpoint}`);
+        const testConnection = new Connection(endpoint, {
+          commitment: 'confirmed',
+          confirmTransactionInitialTimeout: 15000,
+          httpHeaders: {
+            'User-Agent': 'PumpGame-Payment-Verification/1.0'
+          }
         });
-        console.log('✅ Fallback RPC connection successful');
-      } catch (fallbackError: any) {
-        console.error('❌ Fallback RPC also failed:', fallbackError.message);
-        return { verified: false };
+        
+        signatures = await testConnection.getSignaturesForAddress(publicKey, {
+          limit: 3 // Very small limit to avoid rate limiting
+        });
+        
+        console.log(`✅ Successfully connected to ${endpoint}`);
+        break;
+        
+      } catch (error: any) {
+        console.error(`❌ Failed to connect to ${endpoint}:`, error.message);
+        lastError = error;
+        
+        // If it's a Cloudflare/blocking error, skip this endpoint
+        if (error.message.includes('1015') || error.message.includes('Cloudflare') || error.message.includes('banned')) {
+          console.log(`🚫 Endpoint ${endpoint} is blocked, trying next...`);
+          continue;
+        }
       }
+    }
+    
+    if (!signatures) {
+      console.error('❌ All RPC endpoints failed:', lastError?.message);
+      return { verified: false };
     }
     
     console.log(`📋 Found ${signatures.length} recent signatures for user address`);
@@ -191,8 +220,8 @@ export async function checkPaymentToUserAddress(
         recentTransactions++;
         console.log(`🔄 Checking transaction ${recentTransactions}: ${sig.signature.substring(0, 16)}... (${new Date(sig.blockTime * 1000).toISOString()})`);
         
-        // Check single transaction with delay to avoid rate limiting
-        const result = await checkSingleTransactionWithConnection(sig, userAddress, expectedAmount, solPrice, freshConnection);
+        // Try to verify transaction with multiple endpoints
+        const result = await verifyTransactionWithFallbacks(sig, userAddress, expectedAmount, solPrice, endpoints);
         
         if (result.verified) {
           console.log(`✅ Payment verified!`);
@@ -201,12 +230,12 @@ export async function checkPaymentToUserAddress(
         
         // Add delay between requests to avoid rate limiting
         if (recentTransactions < signatures.length) {
-          await new Promise(resolve => setTimeout(resolve, 500)); // Increased delay
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Increased delay
         }
       }
       
       // Early exit after checking enough transactions
-      if (checkedTransactions >= 3) {
+      if (checkedTransactions >= 2) {
         console.log(`⏰ Early exit after checking ${checkedTransactions} transactions to avoid rate limiting`);
         break;
       }
@@ -297,6 +326,87 @@ async function checkSingleTransactionWithConnection(
     }
   }
   
+  return { verified: false };
+}
+
+// Function to verify transaction with multiple endpoint fallbacks
+async function verifyTransactionWithFallbacks(
+  sig: any,
+  userAddress: string,
+  expectedAmount: number,
+  solPrice: number,
+  endpoints: string[]
+): Promise<{ verified: boolean; transactionHash?: string; actualAmount?: number }> {
+  
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`🔄 Trying to verify transaction with ${endpoint}`);
+      
+      const testConnection = new Connection(endpoint, {
+        commitment: 'confirmed',
+        confirmTransactionInitialTimeout: 15000,
+        httpHeaders: {
+          'User-Agent': 'PumpGame-Payment-Verification/1.0'
+        }
+      });
+      
+      const transaction = await testConnection.getTransaction(sig.signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0
+      });
+      
+      if (transaction && transaction.meta) {
+        const preBalances = transaction.meta.preBalances;
+        const postBalances = transaction.meta.postBalances;
+        
+        // Check if this transaction involves a transfer to our wallet
+        for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
+          const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
+          
+          if (accountKey === userAddress) {
+            const balanceChange = (postBalances[i] - preBalances[i]) / LAMPORTS_PER_SOL;
+            
+            if (balanceChange > 0) { // Only positive balance changes (incoming)
+              const estimatedUSD = balanceChange * solPrice;
+              
+              console.log(`💰 Payment received: ${balanceChange.toFixed(6)} SOL (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
+              
+              // Check if the amount matches (within 30% tolerance)
+              const tolerance = expectedAmount * 0.30;
+              if (Math.abs(estimatedUSD - expectedAmount) <= tolerance) {
+                console.log(`✅ Payment verified! Transaction: ${sig.signature}`);
+                console.log(`✅ Amount: $${estimatedUSD.toFixed(2)} (within $${tolerance.toFixed(2)} tolerance)`);
+                return {
+                  verified: true,
+                  transactionHash: sig.signature,
+                  actualAmount: estimatedUSD
+                };
+              } else {
+                console.log(`❌ Amount mismatch: $${estimatedUSD.toFixed(2)} vs $${expectedAmount} (tolerance: $${tolerance.toFixed(2)})`);
+              }
+            }
+          }
+        }
+      }
+      
+      // If we get here, transaction was processed but didn't match
+      return { verified: false };
+      
+    } catch (error: any) {
+      console.error(`❌ Failed to verify transaction with ${endpoint}:`, error.message);
+      
+      // If it's a Cloudflare/blocking error, try next endpoint
+      if (error.message.includes('1015') || error.message.includes('Cloudflare') || error.message.includes('banned')) {
+        console.log(`🚫 Endpoint ${endpoint} is blocked, trying next...`);
+        continue;
+      }
+      
+      // For other errors, also try next endpoint
+      continue;
+    }
+  }
+  
+  console.log(`❌ All endpoints failed to verify transaction ${sig.signature}`);
   return { verified: false };
 }
 
