@@ -3,9 +3,18 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeBet, winBet, loseBet, loadUsers, saveUsers, trackGamePlayed, migrateHasPlayedGame } from "./simple-auth";
 import { verifyPayment } from './payment-verification';
+import { generateUserPaymentAddress, checkPaymentToUserAddress, getMainWalletAddress, cleanupExpiredAddresses, getPrivateKeyForAddress, getAllGeneratedAddresses, getSOLPrice, withdrawSOL, getMainWalletBalance, connection } from './wallet-utils';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  // Cleanup expired addresses on server start
+  cleanupExpiredAddresses();
+  
+  // Set up periodic cleanup every 10 minutes
+  setInterval(() => {
+    cleanupExpiredAddresses();
+  }, 10 * 60 * 1000);
 
   // Simple Auth routes
   app.post("/api/auth/register", (req, res) => {
@@ -197,6 +206,309 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate unique payment address for user
+  app.post("/api/payment/generate-address", async (req, res) => {
+    try {
+      const { userId, amount, currency } = req.body;
+
+      if (!userId || !amount || !currency) {
+        return res.status(400).json({ message: "User ID, amount, and currency required" });
+      }
+
+      if (amount <= 0) {
+        return res.status(400).json({ message: "Amount must be greater than 0" });
+      }
+
+      const users = loadUsers();
+      const user = users.find(u => u.id === userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Generate unique payment wallet for this user
+      const userPaymentWallet = generateUserPaymentAddress(userId, amount, currency);
+
+      // Store the payment session for verification later
+      if (!user.paymentSessions) {
+        user.paymentSessions = [];
+      }
+      
+      user.paymentSessions.push({
+        sessionId: userPaymentWallet.paymentSessionId,
+        amount: userPaymentWallet.amount,
+        currency: userPaymentWallet.currency,
+        walletAddress: userPaymentWallet.address,
+        createdAt: userPaymentWallet.createdAt,
+        expiresAt: userPaymentWallet.expiresAt,
+        status: 'pending'
+      });
+
+      saveUsers(users);
+
+      console.log(`✅ Generated unique payment address for user ${userId}: ${userPaymentWallet.address}`);
+
+      // Don't return the private key to the frontend for security
+      res.json({
+        success: true,
+        paymentSessionId: userPaymentWallet.paymentSessionId,
+        walletAddress: userPaymentWallet.address,
+        amount: userPaymentWallet.amount,
+        currency: userPaymentWallet.currency,
+        expiresAt: userPaymentWallet.expiresAt
+      });
+    } catch (error) {
+      console.error('Generate payment address error:', error);
+      res.status(500).json({ message: "Failed to generate payment address" });
+    }
+  });
+
+  // Cleanup expired addresses endpoint (for maintenance)
+  app.post("/api/wallet/cleanup", (req, res) => {
+    try {
+      cleanupExpiredAddresses();
+      res.json({ 
+        success: true, 
+        message: "Expired addresses cleaned up successfully" 
+      });
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      res.status(500).json({ message: "Failed to cleanup addresses" });
+    }
+  });
+
+  // Debug endpoint to see all generated addresses (remove in production)
+  app.get("/api/wallet/debug/addresses", (req, res) => {
+    try {
+      const addresses = getAllGeneratedAddresses();
+      
+      const addressList = Array.from(addresses.entries()).map(([address, data]: [string, any]) => ({
+        address: address.substring(0, 8) + '...',
+        userId: data.userId,
+        createdAt: new Date(data.createdAt).toISOString(),
+        expired: Date.now() - data.createdAt > 30 * 60 * 1000
+      }));
+      
+      res.json({ 
+        success: true, 
+        count: addressList.length,
+        addresses: addressList
+      });
+    } catch (error) {
+      console.error('Debug error:', error);
+      res.status(500).json({ message: "Failed to get debug info" });
+    }
+  });
+
+  // Test endpoint to manually check payments to main wallet
+  app.get("/api/wallet/test-payment/:amount", async (req, res) => {
+    try {
+      const { amount } = req.params;
+      
+      console.log(`🧪 Testing payment verification for $${amount}`);
+      
+      const result = await checkPaymentToUserAddress(
+        '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+        parseFloat(amount)
+      );
+      
+      res.json({
+        success: true,
+        amount: parseFloat(amount),
+        wallet: '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+        result: result
+      });
+    } catch (error) {
+      console.error('Test payment error:', error);
+      res.status(500).json({ message: "Failed to test payment verification" });
+    }
+  });
+
+  // Debug endpoint to see all recent transactions on the wallet
+  app.get("/api/wallet/debug/transactions", async (req, res) => {
+    try {
+      const { PublicKey } = await import('@solana/web3.js');
+      
+      const publicKey = new PublicKey('3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv');
+      
+      // Get recent signatures
+      const signatures = await connection.getSignaturesForAddress(publicKey, {
+        limit: 10
+      });
+      
+      const transactions = [];
+      
+      for (const sig of signatures.slice(0, 5)) { // Only check first 5 for performance
+        try {
+          const transaction = await connection.getTransaction(sig.signature, {
+            commitment: 'confirmed',
+            maxSupportedTransactionVersion: 0
+          });
+          
+          if (transaction && transaction.meta) {
+            const preBalances = transaction.meta.preBalances;
+            const postBalances = transaction.meta.postBalances;
+            
+            for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
+              const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
+              
+              if (accountKey === '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv') {
+                const balanceChange = (postBalances[i] - preBalances[i]) / 1000000000; // Convert from lamports to SOL
+                
+                if (balanceChange > 0) {
+                  transactions.push({
+                    signature: sig.signature.substring(0, 16) + '...',
+                    timestamp: new Date(sig.blockTime * 1000).toISOString(),
+                    solAmount: balanceChange.toFixed(6),
+                    blockTime: sig.blockTime
+                  });
+                }
+              }
+            }
+          }
+        } catch (txError) {
+          console.error(`Error processing transaction ${sig.signature}:`, txError);
+        }
+      }
+      
+      res.json({
+        success: true,
+        wallet: '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+        totalSignatures: signatures.length,
+        incomingTransactions: transactions
+      });
+    } catch (error) {
+      console.error('Debug transactions error:', error);
+      res.status(500).json({ message: "Failed to get transaction debug info" });
+    }
+  });
+
+  // Withdraw endpoint - send SOL from main wallet to user's address
+  app.post("/api/withdraw", async (req, res) => {
+    try {
+      const { userId, walletAddress, amount } = req.body;
+
+      // Validate input
+      if (!userId || !walletAddress || !amount) {
+        return res.status(400).json({
+          success: false,
+          message: 'Missing required fields: userId, walletAddress, amount'
+        });
+      }
+
+      // Validate amount
+      const withdrawAmount = parseFloat(amount);
+      if (isNaN(withdrawAmount) || withdrawAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid amount. Must be a positive number.'
+        });
+      }
+
+      // Check minimum withdrawal (0.01 SOL to cover transaction fees)
+      if (withdrawAmount < 0.01) {
+        return res.status(400).json({
+          success: false,
+          message: 'Minimum withdrawal amount is 0.01 SOL'
+        });
+      }
+
+      // Get user and check balance
+      const users = loadUsers();
+      const user = users.find(u => u.id === userId);
+      
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      // Convert USD balance to SOL for withdrawal
+      const solPrice = await getSOLPrice();
+      const userBalanceInSOL = user.balance / solPrice;
+
+      console.log(`💰 User ${userId} balance: $${user.balance} (${userBalanceInSOL.toFixed(6)} SOL)`);
+      console.log(`💸 Requested withdrawal: ${withdrawAmount} SOL ($${(withdrawAmount * solPrice).toFixed(2)})`);
+
+      // Check if user has sufficient balance
+      if (userBalanceInSOL < withdrawAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient balance. Available: ${userBalanceInSOL.toFixed(6)} SOL ($${user.balance.toFixed(2)})`
+        });
+      }
+
+      // Check main wallet balance
+      const mainWalletBalance = await getMainWalletBalance();
+      console.log(`💳 Main wallet balance: ${mainWalletBalance.balance.toFixed(6)} SOL ($${mainWalletBalance.balanceUSD.toFixed(2)})`);
+
+      if (mainWalletBalance.balance < withdrawAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient main wallet balance. Available: ${mainWalletBalance.balance.toFixed(6)} SOL`
+        });
+      }
+
+      // Process withdrawal
+      console.log(`🚀 Processing withdrawal: ${withdrawAmount} SOL to ${walletAddress}`);
+      
+      const withdrawalResult = await withdrawSOL(walletAddress, withdrawAmount, userId);
+
+      if (withdrawalResult.success) {
+        // Update user balance
+        const withdrawalAmountUSD = withdrawAmount * solPrice;
+        user.balance -= withdrawalAmountUSD;
+        
+        // Save users
+        saveUsers(users);
+
+        console.log(`✅ Withdrawal successful! User ${userId} balance updated to $${user.balance.toFixed(2)}`);
+        
+        res.json({
+          success: true,
+          message: 'Withdrawal successful',
+          transactionHash: withdrawalResult.transactionHash,
+          newBalance: user.balance,
+          withdrawnAmount: withdrawAmount,
+          withdrawnAmountUSD: withdrawalAmountUSD
+        });
+      } else {
+        console.error(`❌ Withdrawal failed: ${withdrawalResult.error}`);
+        res.status(400).json({
+          success: false,
+          message: withdrawalResult.error || 'Withdrawal failed'
+        });
+      }
+
+    } catch (error) {
+      console.error('Withdrawal error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Withdrawal failed due to server error'
+      });
+    }
+  });
+
+  // Get main wallet balance endpoint
+  app.get("/api/wallet/main/balance", async (req, res) => {
+    try {
+      const balance = await getMainWalletBalance();
+      res.json({
+        success: true,
+        balance: balance.balance,
+        balanceUSD: balance.balanceUSD,
+        walletAddress: getMainWalletAddress()
+      });
+    } catch (error) {
+      console.error('Error getting main wallet balance:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get wallet balance'
+      });
+    }
+  });
+
   // Place bet endpoint
   app.post("/api/game/place-bet", (req, res) => {
     try {
@@ -281,53 +593,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Payment verification route
   app.post('/api/verify-payment', async (req, res) => {
     try {
-      const { amount, walletAddresses, userId } = req.body;
+      const { paymentSessionId, userId } = req.body;
       
-      if (!amount || !walletAddresses || !userId) {
+      if (!paymentSessionId || !userId) {
         return res.status(400).json({ 
           verified: false, 
-          message: 'Missing required fields: amount, walletAddresses, userId' 
+          message: 'Missing required fields: paymentSessionId, userId' 
         });
       }
 
-      console.log(`Payment verification request:`, { amount, userId, walletAddresses });
+      console.log(`Payment verification request:`, { paymentSessionId, userId });
       
-      const verificationResult = await verifyPayment({
-        amount,
-        walletAddresses,
-        userId
-      });
+      // Find the user and their payment session
+      const users = loadUsers();
+      const user = users.find(u => u.id === userId);
+      
+      if (!user) {
+        return res.status(404).json({
+          verified: false,
+          message: 'User not found'
+        });
+      }
+
+      // Find the payment session
+      const paymentSession = user.paymentSessions?.find(
+        (session: any) => session.sessionId === paymentSessionId && session.status === 'pending'
+      );
+
+      if (!paymentSession) {
+        return res.status(404).json({
+          verified: false,
+          message: 'Payment session not found or already processed'
+        });
+      }
+
+      // Check if payment session has expired (30 minutes)
+      if (Date.now() - paymentSession.createdAt > 30 * 60 * 1000) {
+        return res.status(400).json({
+          verified: false,
+          message: 'Payment session has expired. Please create a new payment request.'
+        });
+      }
+
+      // Verify payment using the main wallet address
+      const verificationResult = await checkPaymentToUserAddress(
+        '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+        paymentSession.amount
+      );
       
       if (verificationResult.verified) {
-        // Update user balance - find user by userId and add amount
-        const fs = await import('fs');
-        const path = await import('path');
-        const usersPath = path.join(process.cwd(), 'users.json');
+        // Update user balance and mark payment session as completed
+        const userIndex = users.findIndex(u => u.id === userId);
         
-        try {
-          const usersData = fs.readFileSync(usersPath, 'utf8');
-          const users = JSON.parse(usersData);
-          const userIndex = users.findIndex((u: any) => u.id === userId);
+        if (userIndex >= 0) {
+          users[userIndex].balance = (users[userIndex].balance || 0) + paymentSession.amount;
           
-          if (userIndex >= 0) {
-            users[userIndex].balance = (users[userIndex].balance || 0) + amount;
-            fs.writeFileSync(usersPath, JSON.stringify(users, null, 2));
-            
-            res.json({
-              verified: true,
-              transactionHash: verificationResult.transactionHash,
-              currency: verificationResult.currency,
-              amount: verificationResult.amount,
-              newBalance: users[userIndex].balance
-            });
-          } else {
-            res.status(404).json({
-              verified: false,
-              message: 'User not found'
-            });
+          // Mark payment session as completed
+          if (users[userIndex].paymentSessions) {
+            const sessionIndex = users[userIndex].paymentSessions.findIndex(
+              (session: any) => session.sessionId === paymentSessionId
+            );
+            if (sessionIndex >= 0) {
+              users[userIndex].paymentSessions[sessionIndex].status = 'completed';
+              users[userIndex].paymentSessions[sessionIndex].completedAt = Date.now();
+              users[userIndex].paymentSessions[sessionIndex].transactionHash = verificationResult.transactionHash;
+            }
           }
-        } catch (fileError) {
-          console.error('Error updating user balance:', fileError);
+          
+          saveUsers(users);
+          
+          res.json({
+            verified: true,
+            transactionHash: verificationResult.transactionHash,
+            currency: 'SOL',
+            amount: verificationResult.actualAmount || paymentSession.amount,
+            newBalance: users[userIndex].balance
+          });
+        } else {
           res.status(500).json({
             verified: false,
             message: 'Failed to update user balance'
@@ -336,14 +678,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res.json({
           verified: false,
-          message: 'No valid payment found for the specified amount'
+          message: 'No payment detected. Please ensure your transaction is confirmed and try again.'
         });
       }
     } catch (error) {
       console.error('Payment verification error:', error);
-      res.status(500).json({ 
-        verified: false, 
-        message: 'Payment verification failed' 
+      res.status(500).json({
+        verified: false,
+        message: 'Payment verification failed'
       });
     }
   });
