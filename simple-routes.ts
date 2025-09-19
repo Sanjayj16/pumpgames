@@ -206,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Generate unique payment address for user
+  // Generate payment session for user (using static wallet address)
   app.post("/api/payment/generate-address", async (req, res) => {
     try {
       const { userId, amount, currency } = req.body;
@@ -226,8 +226,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Generate unique payment wallet for this user
-      const userPaymentWallet = generateUserPaymentAddress(userId, amount, currency);
+      // Use static wallet address for all payments
+      const staticWalletAddress = '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv';
+      const paymentSessionId = `${userId}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+      const createdAt = Date.now();
+      const expiresAt = createdAt + (30 * 60 * 1000); // 30 minutes
 
       // Store the payment session for verification later
       if (!user.paymentSessions) {
@@ -235,27 +238,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       user.paymentSessions.push({
-        sessionId: userPaymentWallet.paymentSessionId,
-        amount: userPaymentWallet.amount,
-        currency: userPaymentWallet.currency,
-        walletAddress: userPaymentWallet.address,
-        createdAt: userPaymentWallet.createdAt,
-        expiresAt: userPaymentWallet.expiresAt,
+        sessionId: paymentSessionId,
+        amount: amount,
+        currency: currency,
+        walletAddress: staticWalletAddress,
+        createdAt: createdAt,
+        expiresAt: expiresAt,
         status: 'pending'
       });
 
       saveUsers(users);
 
-      console.log(`✅ Generated unique payment address for user ${userId}: ${userPaymentWallet.address}`);
+      console.log(`✅ Generated payment session for user ${userId} using static address: ${staticWalletAddress}`);
 
-      // Don't return the private key to the frontend for security
       res.json({
         success: true,
-        paymentSessionId: userPaymentWallet.paymentSessionId,
-        walletAddress: userPaymentWallet.address,
-        amount: userPaymentWallet.amount,
-        currency: userPaymentWallet.currency,
-        expiresAt: userPaymentWallet.expiresAt
+        paymentSessionId: paymentSessionId,
+        walletAddress: staticWalletAddress,
+        amount: amount,
+        currency: currency,
+        expiresAt: expiresAt
       });
     } catch (error) {
       console.error('Generate payment address error:', error);
@@ -321,6 +323,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Test payment error:', error);
       res.status(500).json({ message: "Failed to test payment verification" });
+    }
+  });
+
+  // Test endpoint to check payments to a specific user address
+  app.get("/api/wallet/test-user-payment/:address/:amount", async (req, res) => {
+    try {
+      const { address, amount } = req.params;
+      
+      console.log(`🧪 Testing payment verification for $${amount} to address ${address}`);
+      
+      const result = await checkPaymentToUserAddress(
+        address,
+        parseFloat(amount)
+      );
+      
+      res.json({
+        success: true,
+        amount: parseFloat(amount),
+        wallet: address,
+        result: result
+      });
+    } catch (error) {
+      console.error('Test user payment error:', error);
+      res.status(500).json({ message: "Failed to test user payment verification" });
+    }
+  });
+
+  // Test endpoint specifically for static wallet payments
+  app.get("/api/wallet/test-static-payment/:amount", async (req, res) => {
+    try {
+      const { amount } = req.params;
+      const staticWalletAddress = '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv';
+      
+      console.log(`🧪 Testing static wallet payment verification for $${amount}`);
+      
+      const result = await checkPaymentToUserAddress(
+        staticWalletAddress,
+        parseFloat(amount)
+      );
+      
+      res.json({
+        success: true,
+        amount: parseFloat(amount),
+        wallet: staticWalletAddress,
+        result: result
+      });
+    } catch (error) {
+      console.error('Test static payment error:', error);
+      res.status(500).json({ message: "Failed to test static payment verification" });
     }
   });
 
@@ -602,13 +653,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      console.log(`Payment verification request:`, { paymentSessionId, userId });
+      console.log(`🔍 Payment verification request:`, { paymentSessionId, userId });
       
       // Find the user and their payment session
       const users = loadUsers();
       const user = users.find(u => u.id === userId);
       
       if (!user) {
+        console.log(`❌ User not found: ${userId}`);
         return res.status(404).json({
           verified: false,
           message: 'User not found'
@@ -617,31 +669,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Find the payment session
       const paymentSession = user.paymentSessions?.find(
-        (session: any) => session.sessionId === paymentSessionId && session.status === 'pending'
+        (session: any) => session.sessionId === paymentSessionId
       );
 
       if (!paymentSession) {
+        console.log(`❌ Payment session not found: ${paymentSessionId}`);
         return res.status(404).json({
           verified: false,
-          message: 'Payment session not found or already processed'
+          message: 'Payment session not found'
+        });
+      }
+
+      // Check if payment session is already completed
+      if (paymentSession.status === 'completed') {
+        console.log(`⚠️ Payment session already completed: ${paymentSessionId}`);
+        return res.status(400).json({
+          verified: false,
+          message: 'This payment has already been processed and credited to your account.'
         });
       }
 
       // Check if payment session has expired (30 minutes)
       if (Date.now() - paymentSession.createdAt > 30 * 60 * 1000) {
+        console.log(`⏰ Payment session expired: ${paymentSessionId}`);
         return res.status(400).json({
           verified: false,
           message: 'Payment session has expired. Please create a new payment request.'
         });
       }
 
-      // Verify payment using the main wallet address
+      console.log(`✅ Payment session found:`, {
+        sessionId: paymentSession.sessionId,
+        walletAddress: paymentSession.walletAddress,
+        amount: paymentSession.amount,
+        currency: paymentSession.currency,
+        status: paymentSession.status
+      });
+
+      // Get list of all processed transaction hashes to prevent duplicates
+      const allProcessedTransactions = new Set<string>();
+      users.forEach(u => {
+        if (u.paymentSessions) {
+          u.paymentSessions.forEach((session: any) => {
+            if (session.transactionHash && session.status === 'completed') {
+              allProcessedTransactions.add(session.transactionHash);
+            }
+          });
+        }
+      });
+
+      console.log(`📋 Found ${allProcessedTransactions.size} already processed transactions`);
+
+      // Verify payment using the static wallet address
+      const staticWalletAddress = '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv';
+      console.log(`🔍 Checking payment to static address: ${staticWalletAddress} for amount: $${paymentSession.amount}`);
       const verificationResult = await checkPaymentToUserAddress(
-        '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+        staticWalletAddress,
         paymentSession.amount
       );
       
+      console.log(`📊 Verification result:`, verificationResult);
+      
       if (verificationResult.verified) {
+        // Check if this transaction hash has already been processed
+        if (verificationResult.transactionHash && allProcessedTransactions.has(verificationResult.transactionHash)) {
+          console.log(`⚠️ Transaction ${verificationResult.transactionHash} has already been processed`);
+          return res.status(400).json({
+            verified: false,
+            message: 'This payment transaction has already been processed. Please check your account balance.'
+          });
+        }
+
         // Update user balance and mark payment session as completed
         const userIndex = users.findIndex(u => u.id === userId);
         
@@ -657,10 +755,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               users[userIndex].paymentSessions[sessionIndex].status = 'completed';
               users[userIndex].paymentSessions[sessionIndex].completedAt = Date.now();
               users[userIndex].paymentSessions[sessionIndex].transactionHash = verificationResult.transactionHash;
+              (users[userIndex].paymentSessions[sessionIndex] as any).verifiedAmount = verificationResult.actualAmount || paymentSession.amount;
             }
           }
           
           saveUsers(users);
+          
+          console.log(`✅ Payment verified successfully! User ${userId} balance updated to $${users[userIndex].balance.toFixed(2)}`);
+          console.log(`🔗 Transaction hash: ${verificationResult.transactionHash}`);
           
           res.json({
             verified: true,
@@ -676,6 +778,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       } else {
+        console.log(`❌ No payment detected for user ${userId} to static address ${staticWalletAddress}`);
         res.json({
           verified: false,
           message: 'No payment detected. Please ensure your transaction is confirmed and try again.'
