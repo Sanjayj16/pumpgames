@@ -4,11 +4,42 @@ import bs58 from 'bs58';
 // Your main wallet private key (base58 encoded)
 const MAIN_WALLET_PRIVATE_KEY = 'PPDmTNT9eFTRfbEMr7ZxmAyJe2SZEVRSQv3ZQg4dMFxBGaqGMfnLKT5zrAjK6bwEjSinoK5o6gnENJpbqBpxFGv';
 
-// Solana RPC endpoint
-const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
+// Solana RPC endpoints (with fallbacks for rate limiting)
+const SOLANA_RPC_URLS = [
+  'https://api.mainnet-beta.solana.com',
+  'https://solana-api.projectserum.com',
+  'https://rpc.ankr.com/solana',
+  'https://solana-mainnet.g.alchemy.com/v2/demo' // Free tier
+];
 
-// Create connection to Solana network
-const connection = new Connection(SOLANA_RPC_URL, 'confirmed');
+// Create connection to Solana network with better configuration
+let connection = new Connection(SOLANA_RPC_URLS[0], {
+  commitment: 'confirmed',
+  wsEndpoint: 'wss://api.mainnet-beta.solana.com',
+  disableRetryOnRateLimit: false, // Enable retry on rate limit
+  confirmTransactionInitialTimeout: 30000, // 30 seconds
+  httpHeaders: {
+    'User-Agent': 'PumpGame/1.0'
+  }
+});
+
+// Function to switch to a different RPC endpoint
+function switchRpcEndpoint(): void {
+  const currentUrl = connection.rpcEndpoint;
+  const currentIndex = SOLANA_RPC_URLS.indexOf(currentUrl);
+  const nextIndex = (currentIndex + 1) % SOLANA_RPC_URLS.length;
+  
+  console.log(`🔄 Switching RPC endpoint from ${currentUrl} to ${SOLANA_RPC_URLS[nextIndex]}`);
+  
+  connection = new Connection(SOLANA_RPC_URLS[nextIndex], {
+    commitment: 'confirmed',
+    disableRetryOnRateLimit: false,
+    confirmTransactionInitialTimeout: 30000,
+    httpHeaders: {
+      'User-Agent': 'PumpGame/1.0'
+    }
+  });
+}
 
 // Parse the main wallet keypair
 const mainWalletKeypair = Keypair.fromSecretKey(bs58.decode(MAIN_WALLET_PRIVATE_KEY));
@@ -101,7 +132,7 @@ export async function checkPaymentToUserAddress(
     // Get current SOL price and signatures in parallel for faster processing
     const [signatures, solPrice] = await Promise.all([
       connection.getSignaturesForAddress(publicKey, {
-        limit: 15 // Reduced from 100 to 15 for faster processing
+        limit: 8 // Reduced to 8 to avoid rate limiting
       }),
       getSOLPrice()
     ]);
@@ -112,46 +143,32 @@ export async function checkPaymentToUserAddress(
     let checkedTransactions = 0;
     let recentTransactions = 0;
     
-    // Process transactions in parallel for faster verification
-    const verificationPromises = [];
-    const maxConcurrent = 3; // Limit concurrent transaction checks
-    
+    // Process transactions sequentially to avoid RPC rate limiting
     for (const sig of signatures) {
       checkedTransactions++;
       
       if (sig.blockTime && sig.blockTime * 1000 > cutoffTime) {
         recentTransactions++;
+        console.log(`🔄 Checking transaction ${recentTransactions}: ${sig.signature.substring(0, 16)}... (${new Date(sig.blockTime * 1000).toISOString()})`);
         
-        // Add transaction check to promises array
-        verificationPromises.push(
-          checkSingleTransaction(sig, userAddress, expectedAmount, solPrice)
-        );
+        // Check single transaction with delay to avoid rate limiting
+        const result = await checkSingleTransaction(sig, userAddress, expectedAmount, solPrice);
         
-        // Process in batches to avoid overwhelming the RPC
-        if (verificationPromises.length >= maxConcurrent) {
-          const results = await Promise.allSettled(verificationPromises);
-          
-          for (const result of results) {
-            if (result.status === 'fulfilled' && result.value.verified) {
-              console.log(`✅ Payment verified in batch processing!`);
-              return result.value;
-            }
-          }
-          
-          verificationPromises.length = 0; // Clear the array
+        if (result.verified) {
+          console.log(`✅ Payment verified!`);
+          return result;
+        }
+        
+        // Add small delay between requests to avoid rate limiting
+        if (recentTransactions < signatures.length) {
+          await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay
         }
       }
-    }
-    
-    // Process remaining promises
-    if (verificationPromises.length > 0) {
-      const results = await Promise.allSettled(verificationPromises);
       
-      for (const result of results) {
-        if (result.status === 'fulfilled' && result.value.verified) {
-          console.log(`✅ Payment verified in final batch!`);
-          return result.value;
-        }
+      // Early exit after checking enough transactions
+      if (checkedTransactions >= 5) {
+        console.log(`⏰ Early exit after checking ${checkedTransactions} transactions to avoid rate limiting`);
+        break;
       }
     }
     
@@ -165,58 +182,84 @@ export async function checkPaymentToUserAddress(
   }
 }
 
-// Helper function to check a single transaction (optimized for speed)
+// Helper function to check a single transaction with retry logic for rate limiting
 async function checkSingleTransaction(
   sig: any,
   userAddress: string,
   expectedAmount: number,
   solPrice: number
 ): Promise<{ verified: boolean; transactionHash?: string; actualAmount?: number }> {
-  try {
-    const transaction = await connection.getTransaction(sig.signature, {
-      commitment: 'confirmed',
-      maxSupportedTransactionVersion: 0
-    });
-    
-    if (transaction && transaction.meta) {
-      const preBalances = transaction.meta.preBalances;
-      const postBalances = transaction.meta.postBalances;
+  const maxRetries = 3;
+  const baseDelay = 1000; // 1 second base delay
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const transaction = await connection.getTransaction(sig.signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0
+      });
       
-      // Check if this transaction involves a transfer to our wallet
-      for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
-        const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
+      if (transaction && transaction.meta) {
+        const preBalances = transaction.meta.preBalances;
+        const postBalances = transaction.meta.postBalances;
         
-        if (accountKey === userAddress) {
-          const balanceChange = (postBalances[i] - preBalances[i]) / LAMPORTS_PER_SOL;
+        // Check if this transaction involves a transfer to our wallet
+        for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
+          const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
           
-          if (balanceChange > 0) { // Only positive balance changes (incoming)
-            const estimatedUSD = balanceChange * solPrice;
+          if (accountKey === userAddress) {
+            const balanceChange = (postBalances[i] - preBalances[i]) / LAMPORTS_PER_SOL;
             
-            console.log(`💰 Payment received: ${balanceChange.toFixed(6)} SOL (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
-            
-            // Check if the amount matches (within 30% tolerance)
-            const tolerance = expectedAmount * 0.30;
-            if (Math.abs(estimatedUSD - expectedAmount) <= tolerance) {
-              console.log(`✅ Payment verified! Transaction: ${sig.signature}`);
-              console.log(`✅ Amount: $${estimatedUSD.toFixed(2)} (within $${tolerance.toFixed(2)} tolerance)`);
-              return {
-                verified: true,
-                transactionHash: sig.signature,
-                actualAmount: estimatedUSD
-              };
-            } else {
-              console.log(`❌ Amount mismatch: $${estimatedUSD.toFixed(2)} vs $${expectedAmount} (tolerance: $${tolerance.toFixed(2)})`);
+            if (balanceChange > 0) { // Only positive balance changes (incoming)
+              const estimatedUSD = balanceChange * solPrice;
+              
+              console.log(`💰 Payment received: ${balanceChange.toFixed(6)} SOL (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
+              
+              // Check if the amount matches (within 30% tolerance)
+              const tolerance = expectedAmount * 0.30;
+              if (Math.abs(estimatedUSD - expectedAmount) <= tolerance) {
+                console.log(`✅ Payment verified! Transaction: ${sig.signature}`);
+                console.log(`✅ Amount: $${estimatedUSD.toFixed(2)} (within $${tolerance.toFixed(2)} tolerance)`);
+                return {
+                  verified: true,
+                  transactionHash: sig.signature,
+                  actualAmount: estimatedUSD
+                };
+              } else {
+                console.log(`❌ Amount mismatch: $${estimatedUSD.toFixed(2)} vs $${expectedAmount} (tolerance: $${tolerance.toFixed(2)})`);
+              }
             }
           }
         }
       }
+      
+      return { verified: false };
+      
+    } catch (txError: any) {
+      console.log(`⚠️ Error processing transaction ${sig.signature} (attempt ${attempt}/${maxRetries}):`, txError.message);
+      
+      // Check if it's a rate limiting error
+      if (txError.message && txError.message.includes('429')) {
+        if (attempt < maxRetries) {
+          // Switch RPC endpoint on rate limiting
+          switchRpcEndpoint();
+          
+          const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
+          console.log(`⏳ Rate limited, waiting ${delay}ms before retry with new endpoint...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        } else {
+          console.log(`❌ Max retries reached for transaction ${sig.signature}`);
+          return { verified: false };
+        }
+      } else {
+        // For other errors, don't retry
+        return { verified: false };
+      }
     }
-    
-    return { verified: false };
-  } catch (txError) {
-    console.log(`⚠️ Error processing transaction ${sig.signature}:`, txError);
-    return { verified: false };
   }
+  
+  return { verified: false };
 }
 
 /**
