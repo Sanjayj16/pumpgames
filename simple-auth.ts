@@ -14,6 +14,17 @@ interface SimpleUser {
   gamesPlayedToday?: number; // Number of games played today
   lastGameDate?: string; // Date of last game played (ISO string)
   hasPlayedGame?: boolean; // Whether user has ever played a game (enables daily rewards)
+  paymentSessions?: Array<{
+    sessionId: string;
+    amount: number;
+    currency: string;
+    walletAddress: string;
+    createdAt: number;
+    expiresAt: number;
+    status: 'pending' | 'completed' | 'expired';
+    completedAt?: number;
+    transactionHash?: string;
+  }>; // Payment sessions for unique addresses
 }
 
 // Load users from file
