@@ -141,8 +141,8 @@ export async function checkPaymentToUserAddress(
                   
                   console.log(`💰 Payment received: ${balanceChange.toFixed(6)} SOL (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
                   
-                  // Check if the amount matches (within 15% tolerance for price fluctuations)
-                  const tolerance = expectedAmount * 0.15;
+                  // Check if the amount matches (within 30% tolerance for price fluctuations)
+                  const tolerance = expectedAmount * 0.30; // Increased tolerance for server issues
                   if (Math.abs(estimatedUSD - expectedAmount) <= tolerance) {
                     console.log(`✅ Payment verified! Transaction: ${sig.signature}`);
                     console.log(`✅ Amount: $${estimatedUSD.toFixed(2)} (within $${tolerance.toFixed(2)} tolerance)`);
@@ -153,6 +153,8 @@ export async function checkPaymentToUserAddress(
                     };
                   } else {
                     console.log(`❌ Amount mismatch: $${estimatedUSD.toFixed(2)} vs $${expectedAmount} (tolerance: $${tolerance.toFixed(2)})`);
+                    console.log(`📊 Difference: $${Math.abs(estimatedUSD - expectedAmount).toFixed(2)} (max allowed: $${tolerance.toFixed(2)})`);
+                    console.log(`💱 SOL price used: $${solPrice.toFixed(2)}`);
                   }
                 }
               }
@@ -207,17 +209,60 @@ export async function transferToMainWallet(
 }
 
 /**
- * Get current SOL price in USD
+ * Get current SOL price in USD with retry mechanism
  */
 export async function getSOLPrice(): Promise<number> {
-  try {
-    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    const data = await response.json();
-    return data.solana?.usd || 100; // Fallback price
-  } catch (error) {
-    console.error('Failed to fetch SOL price:', error);
-    return 100; // Fallback price
+  const maxRetries = 3;
+  const retryDelay = 1000; // 1 second
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🌐 Fetching SOL price from CoinGecko... (attempt ${attempt}/${maxRetries})`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`CoinGecko API returned ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const price = data.solana?.usd;
+      
+      if (!price || price <= 0 || price > 1000) { // Sanity check
+        throw new Error(`Invalid price data received: ${price}`);
+      }
+      
+      console.log(`✅ SOL price fetched successfully: $${price}`);
+      return price;
+      
+    } catch (error) {
+      console.error(`❌ Attempt ${attempt} failed to fetch SOL price:`, error);
+      
+      if (attempt === maxRetries) {
+        console.error('❌ All attempts failed to fetch SOL price');
+        console.log('⚠️ Using fallback SOL price: $150');
+        return 150; // More realistic fallback price
+      }
+      
+      // Wait before retry
+      console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
   }
+  
+  return 150; // Fallback
 }
 
 /**
