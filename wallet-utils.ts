@@ -7,10 +7,14 @@ const MAIN_WALLET_PRIVATE_KEY = 'PPDmTNT9eFTRfbEMr7ZxmAyJe2SZEVRSQv3ZQg4dMFxBGaq
 // Solana RPC endpoints (with fallbacks for rate limiting)
 const SOLANA_RPC_URLS = [
   'https://api.mainnet-beta.solana.com',
-  'https://solana-api.projectserum.com',
   'https://rpc.ankr.com/solana',
-  'https://solana-mainnet.g.alchemy.com/v2/demo' // Free tier
+  'https://solana-mainnet.g.alchemy.com/v2/demo',
+  'https://solana-api.projectserum.com'
 ];
+
+// SOL price cache to reduce API calls
+let solPriceCache: { price: number; timestamp: number } | null = null;
+const SOL_PRICE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // Create connection to Solana network with better configuration
 let connection = new Connection(SOLANA_RPC_URLS[0], {
@@ -34,9 +38,26 @@ function switchRpcEndpoint(): void {
   connection = new Connection(SOLANA_RPC_URLS[nextIndex], {
     commitment: 'confirmed',
     disableRetryOnRateLimit: false,
-    confirmTransactionInitialTimeout: 30000,
+    confirmTransactionInitialTimeout: 15000, // Reduced timeout
     httpHeaders: {
-      'User-Agent': 'PumpGame/1.0'
+      'User-Agent': 'PumpGame-Payment-Verification/1.0'
+    }
+  });
+}
+
+// Function to get a fresh RPC connection with better error handling
+function getFreshRpcConnection(): Connection {
+  const randomIndex = Math.floor(Math.random() * SOLANA_RPC_URLS.length);
+  const selectedUrl = SOLANA_RPC_URLS[randomIndex];
+  
+  console.log(`🔄 Creating fresh RPC connection to ${selectedUrl}`);
+  
+  return new Connection(selectedUrl, {
+    commitment: 'confirmed',
+    disableRetryOnRateLimit: false,
+    confirmTransactionInitialTimeout: 15000,
+    httpHeaders: {
+      'User-Agent': 'PumpGame-Payment-Verification/1.0'
     }
   });
 }
@@ -129,16 +150,35 @@ export async function checkPaymentToUserAddress(
     
     console.log(`📅 Checking transactions after: ${new Date(cutoffTime).toISOString()}`);
     
-    // Get current SOL price and signatures in parallel for faster processing
-    const [signatures, solPrice] = await Promise.all([
-      connection.getSignaturesForAddress(publicKey, {
-        limit: 8 // Reduced to 8 to avoid rate limiting
-      }),
-      getSOLPrice()
-    ]);
+    // Get SOL price first (with caching)
+    const solPrice = await getSOLPrice();
+    console.log(`💱 Current SOL price: $${solPrice}`);
+    
+    // Use fresh RPC connection to avoid rate limiting
+    const freshConnection = getFreshRpcConnection();
+    
+    // Get signatures with error handling
+    let signatures;
+    try {
+      signatures = await freshConnection.getSignaturesForAddress(publicKey, {
+        limit: 5 // Further reduced to 5 to avoid rate limiting
+      });
+    } catch (rpcError: any) {
+      console.error('❌ RPC error getting signatures:', rpcError.message);
+      
+      // Try with main connection as fallback
+      try {
+        signatures = await connection.getSignaturesForAddress(publicKey, {
+          limit: 3 // Even smaller limit for fallback
+        });
+        console.log('✅ Fallback RPC connection successful');
+      } catch (fallbackError: any) {
+        console.error('❌ Fallback RPC also failed:', fallbackError.message);
+        return { verified: false };
+      }
+    }
     
     console.log(`📋 Found ${signatures.length} recent signatures for user address`);
-    console.log(`💱 Current SOL price: $${solPrice}`);
     
     let checkedTransactions = 0;
     let recentTransactions = 0;
@@ -152,21 +192,21 @@ export async function checkPaymentToUserAddress(
         console.log(`🔄 Checking transaction ${recentTransactions}: ${sig.signature.substring(0, 16)}... (${new Date(sig.blockTime * 1000).toISOString()})`);
         
         // Check single transaction with delay to avoid rate limiting
-        const result = await checkSingleTransaction(sig, userAddress, expectedAmount, solPrice);
+        const result = await checkSingleTransactionWithConnection(sig, userAddress, expectedAmount, solPrice, freshConnection);
         
         if (result.verified) {
           console.log(`✅ Payment verified!`);
           return result;
         }
         
-        // Add small delay between requests to avoid rate limiting
+        // Add delay between requests to avoid rate limiting
         if (recentTransactions < signatures.length) {
-          await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay
+          await new Promise(resolve => setTimeout(resolve, 500)); // Increased delay
         }
       }
       
       // Early exit after checking enough transactions
-      if (checkedTransactions >= 5) {
+      if (checkedTransactions >= 3) {
         console.log(`⏰ Early exit after checking ${checkedTransactions} transactions to avoid rate limiting`);
         break;
       }
@@ -183,18 +223,19 @@ export async function checkPaymentToUserAddress(
 }
 
 // Helper function to check a single transaction with retry logic for rate limiting
-async function checkSingleTransaction(
+async function checkSingleTransactionWithConnection(
   sig: any,
   userAddress: string,
   expectedAmount: number,
-  solPrice: number
+  solPrice: number,
+  rpcConnection: Connection
 ): Promise<{ verified: boolean; transactionHash?: string; actualAmount?: number }> {
-  const maxRetries = 3;
-  const baseDelay = 1000; // 1 second base delay
+  const maxRetries = 2; // Reduced retries
+  const baseDelay = 2000; // Increased base delay
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const transaction = await connection.getTransaction(sig.signature, {
+      const transaction = await rpcConnection.getTransaction(sig.signature, {
         commitment: 'confirmed',
         maxSupportedTransactionVersion: 0
       });
@@ -241,11 +282,8 @@ async function checkSingleTransaction(
       // Check if it's a rate limiting error
       if (txError.message && txError.message.includes('429')) {
         if (attempt < maxRetries) {
-          // Switch RPC endpoint on rate limiting
-          switchRpcEndpoint();
-          
           const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
-          console.log(`⏳ Rate limited, waiting ${delay}ms before retry with new endpoint...`);
+          console.log(`⏳ Rate limited, waiting ${delay}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         } else {
@@ -260,6 +298,16 @@ async function checkSingleTransaction(
   }
   
   return { verified: false };
+}
+
+// Legacy function for backward compatibility
+async function checkSingleTransaction(
+  sig: any,
+  userAddress: string,
+  expectedAmount: number,
+  solPrice: number
+): Promise<{ verified: boolean; transactionHash?: string; actualAmount?: number }> {
+  return checkSingleTransactionWithConnection(sig, userAddress, expectedAmount, solPrice, connection);
 }
 
 /**
@@ -294,24 +342,31 @@ export async function transferToMainWallet(
 }
 
 /**
- * Get current SOL price in USD with retry mechanism
+ * Get current SOL price in USD with caching and retry mechanism
  */
 export async function getSOLPrice(): Promise<number> {
-  const maxRetries = 2; // Reduced from 3 to 2
-  const retryDelay = 500; // Reduced from 1000ms to 500ms
+  // Check cache first
+  if (solPriceCache && Date.now() - solPriceCache.timestamp < SOL_PRICE_CACHE_DURATION) {
+    console.log(`💾 Using cached SOL price: $${solPriceCache.price}`);
+    return solPriceCache.price;
+  }
+  
+  const maxRetries = 1; // Reduced to 1 attempt to avoid rate limiting
+  const retryDelay = 2000; // Increased delay
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`🌐 Fetching SOL price from CoinGecko... (attempt ${attempt}/${maxRetries})`);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced from 10s to 5s
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased timeout
       
       const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'User-Agent': 'PumpGame-Payment-Verification/1.0',
           'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-cache',
+          'X-Requested-With': 'XMLHttpRequest'
         },
         signal: controller.signal
       });
@@ -329,7 +384,9 @@ export async function getSOLPrice(): Promise<number> {
         throw new Error(`Invalid price data received: ${price}`);
       }
       
-      console.log(`✅ SOL price fetched successfully: $${price}`);
+      // Cache the price
+      solPriceCache = { price, timestamp: Date.now() };
+      console.log(`✅ SOL price fetched successfully: $${price} (cached for 5 minutes)`);
       return price;
       
     } catch (error) {
@@ -337,11 +394,18 @@ export async function getSOLPrice(): Promise<number> {
       
       if (attempt === maxRetries) {
         console.error('❌ All attempts failed to fetch SOL price');
-        console.log('⚠️ Using fallback SOL price: $150');
-        return 150; // More realistic fallback price
+        
+        // Use cached price if available (even if expired)
+        if (solPriceCache) {
+          console.log(`⚠️ Using expired cached SOL price: $${solPriceCache.price}`);
+          return solPriceCache.price;
+        }
+        
+        console.log('⚠️ Using fallback SOL price: $240');
+        return 240; // More realistic fallback price
       }
       
-      // Wait before retry (only if not the last attempt)
+      // Wait before retry
       if (attempt < maxRetries) {
         console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -349,7 +413,7 @@ export async function getSOLPrice(): Promise<number> {
     }
   }
   
-  return 150; // Fallback
+  return 240; // Fallback
 }
 
 /**
