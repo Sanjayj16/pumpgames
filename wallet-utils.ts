@@ -98,71 +98,59 @@ export async function checkPaymentToUserAddress(
     
     console.log(`📅 Checking transactions after: ${new Date(cutoffTime).toISOString()}`);
     
-    // Get recent signatures for this address
-    const signatures = await connection.getSignaturesForAddress(publicKey, {
-      limit: 100 // Increased limit to catch more transactions
-    });
+    // Get current SOL price and signatures in parallel for faster processing
+    const [signatures, solPrice] = await Promise.all([
+      connection.getSignaturesForAddress(publicKey, {
+        limit: 15 // Reduced from 100 to 15 for faster processing
+      }),
+      getSOLPrice()
+    ]);
     
     console.log(`📋 Found ${signatures.length} recent signatures for user address`);
-    
-    // Get current SOL price for accurate conversion
-    const solPrice = await getSOLPrice();
     console.log(`💱 Current SOL price: $${solPrice}`);
     
     let checkedTransactions = 0;
     let recentTransactions = 0;
+    
+    // Process transactions in parallel for faster verification
+    const verificationPromises = [];
+    const maxConcurrent = 3; // Limit concurrent transaction checks
     
     for (const sig of signatures) {
       checkedTransactions++;
       
       if (sig.blockTime && sig.blockTime * 1000 > cutoffTime) {
         recentTransactions++;
-        console.log(`🔄 Checking transaction ${recentTransactions}: ${sig.signature.substring(0, 16)}... (${new Date(sig.blockTime * 1000).toISOString()})`);
         
-        try {
-          const transaction = await connection.getTransaction(sig.signature, {
-            commitment: 'confirmed',
-            maxSupportedTransactionVersion: 0
-          });
+        // Add transaction check to promises array
+        verificationPromises.push(
+          checkSingleTransaction(sig, userAddress, expectedAmount, solPrice)
+        );
+        
+        // Process in batches to avoid overwhelming the RPC
+        if (verificationPromises.length >= maxConcurrent) {
+          const results = await Promise.allSettled(verificationPromises);
           
-          if (transaction && transaction.meta) {
-            // Check if this transaction involves a transfer to our user address
-            const preBalances = transaction.meta.preBalances;
-            const postBalances = transaction.meta.postBalances;
-            
-            for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
-              const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
-              
-              if (accountKey === userAddress) {
-                const balanceChange = (postBalances[i] - preBalances[i]) / LAMPORTS_PER_SOL; // Convert from lamports to SOL
-                
-                if (balanceChange > 0) { // Only positive balance changes (incoming)
-                  const estimatedUSD = balanceChange * solPrice;
-                  
-                  console.log(`💰 Payment received: ${balanceChange.toFixed(6)} SOL (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
-                  
-                  // Check if the amount matches (within 30% tolerance for price fluctuations)
-                  const tolerance = expectedAmount * 0.30; // Increased tolerance for server issues
-                  if (Math.abs(estimatedUSD - expectedAmount) <= tolerance) {
-                    console.log(`✅ Payment verified! Transaction: ${sig.signature}`);
-                    console.log(`✅ Amount: $${estimatedUSD.toFixed(2)} (within $${tolerance.toFixed(2)} tolerance)`);
-                    return {
-                      verified: true,
-                      transactionHash: sig.signature,
-                      actualAmount: estimatedUSD
-                    };
-                  } else {
-                    console.log(`❌ Amount mismatch: $${estimatedUSD.toFixed(2)} vs $${expectedAmount} (tolerance: $${tolerance.toFixed(2)})`);
-                    console.log(`📊 Difference: $${Math.abs(estimatedUSD - expectedAmount).toFixed(2)} (max allowed: $${tolerance.toFixed(2)})`);
-                    console.log(`💱 SOL price used: $${solPrice.toFixed(2)}`);
-                  }
-                }
-              }
+          for (const result of results) {
+            if (result.status === 'fulfilled' && result.value.verified) {
+              console.log(`✅ Payment verified in batch processing!`);
+              return result.value;
             }
           }
-        } catch (txError) {
-          console.error(`Error processing transaction ${sig.signature}:`, txError);
-          continue; // Skip this transaction and continue with the next one
+          
+          verificationPromises.length = 0; // Clear the array
+        }
+      }
+    }
+    
+    // Process remaining promises
+    if (verificationPromises.length > 0) {
+      const results = await Promise.allSettled(verificationPromises);
+      
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value.verified) {
+          console.log(`✅ Payment verified in final batch!`);
+          return result.value;
         }
       }
     }
@@ -173,6 +161,60 @@ export async function checkPaymentToUserAddress(
     
   } catch (error) {
     console.error('Error checking payment to user address:', error);
+    return { verified: false };
+  }
+}
+
+// Helper function to check a single transaction (optimized for speed)
+async function checkSingleTransaction(
+  sig: any,
+  userAddress: string,
+  expectedAmount: number,
+  solPrice: number
+): Promise<{ verified: boolean; transactionHash?: string; actualAmount?: number }> {
+  try {
+    const transaction = await connection.getTransaction(sig.signature, {
+      commitment: 'confirmed',
+      maxSupportedTransactionVersion: 0
+    });
+    
+    if (transaction && transaction.meta) {
+      const preBalances = transaction.meta.preBalances;
+      const postBalances = transaction.meta.postBalances;
+      
+      // Check if this transaction involves a transfer to our wallet
+      for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
+        const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
+        
+        if (accountKey === userAddress) {
+          const balanceChange = (postBalances[i] - preBalances[i]) / LAMPORTS_PER_SOL;
+          
+          if (balanceChange > 0) { // Only positive balance changes (incoming)
+            const estimatedUSD = balanceChange * solPrice;
+            
+            console.log(`💰 Payment received: ${balanceChange.toFixed(6)} SOL (~$${estimatedUSD.toFixed(2)}) - Expected: $${expectedAmount}`);
+            
+            // Check if the amount matches (within 30% tolerance)
+            const tolerance = expectedAmount * 0.30;
+            if (Math.abs(estimatedUSD - expectedAmount) <= tolerance) {
+              console.log(`✅ Payment verified! Transaction: ${sig.signature}`);
+              console.log(`✅ Amount: $${estimatedUSD.toFixed(2)} (within $${tolerance.toFixed(2)} tolerance)`);
+              return {
+                verified: true,
+                transactionHash: sig.signature,
+                actualAmount: estimatedUSD
+              };
+            } else {
+              console.log(`❌ Amount mismatch: $${estimatedUSD.toFixed(2)} vs $${expectedAmount} (tolerance: $${tolerance.toFixed(2)})`);
+            }
+          }
+        }
+      }
+    }
+    
+    return { verified: false };
+  } catch (txError) {
+    console.log(`⚠️ Error processing transaction ${sig.signature}:`, txError);
     return { verified: false };
   }
 }
@@ -212,15 +254,15 @@ export async function transferToMainWallet(
  * Get current SOL price in USD with retry mechanism
  */
 export async function getSOLPrice(): Promise<number> {
-  const maxRetries = 3;
-  const retryDelay = 1000; // 1 second
+  const maxRetries = 2; // Reduced from 3 to 2
+  const retryDelay = 500; // Reduced from 1000ms to 500ms
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`🌐 Fetching SOL price from CoinGecko... (attempt ${attempt}/${maxRetries})`);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced from 10s to 5s
       
       const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', {
         headers: {
@@ -256,9 +298,11 @@ export async function getSOLPrice(): Promise<number> {
         return 150; // More realistic fallback price
       }
       
-      // Wait before retry
-      console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      // Wait before retry (only if not the last attempt)
+      if (attempt < maxRetries) {
+        console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
     }
   }
   
