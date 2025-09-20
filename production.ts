@@ -572,9 +572,9 @@ app.use(express.static("public"));
   httpServer.listen(port, host, () => {
     console.log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
     console.log(`🌐 Listening on ${host}:${port}`);
-    console.log(`📊 Health check: http://localhost:${port}/health`);
+    console.log(`�� Health check: http://localhost:${port}/health`);
     console.log(`🔌 Socket.IO path: /socket.io`);
-    console.log(`🌍 CORS allowed origins:`, isProduction ? [
+    console.log(`�� CORS allowed origins:`, isProduction ? [
       process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
       "https://harmonious-boba-11ae9e.netlify.app",
       "http://localhost:5173",
