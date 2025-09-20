@@ -14,6 +14,7 @@ interface SimpleUser {
   gamesPlayedToday?: number; // Number of games played today
   lastGameDate?: string; // Date of last game played (ISO string)
   hasPlayedGame?: boolean; // Whether user has ever played a game (enables daily rewards)
+  isClipper?: boolean; // Whether user is a clipper account (cannot withdraw)
   paymentSessions?: Array<{
     sessionId: string;
     amount: number;
