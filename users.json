@@ -110,12 +110,446 @@
     "id": "1757579119396",
     "username": "cruze",
     "password": "cruze@123",
-    "balance": 79.75513333333335,
-    "holdBalance": 11.2,
+    "balance": 81.13733333333333,
+    "holdBalance": 26.2,
     "lastDailyRewardClaim": "2025-09-15T11:33:03.097Z",
-    "gamesPlayedToday": 1,
-    "lastGameDate": "2025-09-17T07:04:13.480Z",
-    "hasPlayedGame": true
+    "gamesPlayedToday": 3,
+    "lastGameDate": "2025-09-20T06:31:13.698Z",
+    "hasPlayedGame": true,
+    "paymentSessions": [
+      {
+        "sessionId": "1757579119396_1758233889048_16n2hstv1h1",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "7ssZtUw9JpeqjxDyEDkUMKwAt4ceiAVKRYErUmexwfFr",
+        "createdAt": 1758233889048,
+        "expiresAt": 1758235689048,
+        "status": "completed",
+        "completedAt": 1758233919276,
+        "transactionHash": "44ZobD7rUsRf6QRvjiwUmthFwxbnz4KuC3w7kCRDG4TYobc6MG1wisFgm6fGmxdfT4W5zQXebU9byHP6d3Y3bt3V"
+      },
+      {
+        "sessionId": "1757579119396_1758233934347_74gji6kvnch",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "CEeQm3Xx2qzDyVg2HZBtbUJibuGPgf6XsPACByS7UppP",
+        "createdAt": 1758233934347,
+        "expiresAt": 1758235734347,
+        "status": "completed",
+        "completedAt": 1758233937860,
+        "transactionHash": "44ZobD7rUsRf6QRvjiwUmthFwxbnz4KuC3w7kCRDG4TYobc6MG1wisFgm6fGmxdfT4W5zQXebU9byHP6d3Y3bt3V"
+      },
+      {
+        "sessionId": "1757579119396_1758267437652_t8ys1cig1l",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "5KXebMp2tpxKqJd9978jPr9uyh1cdVfn9m4hpJ7Vk6Sp",
+        "createdAt": 1758267437652,
+        "expiresAt": 1758269237652,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758269213821_slopywu6f1a",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "4wRD6pv9qe5CCj4ZbGFrNZY5M65kBJ4fdbmTEvbjAhSn",
+        "createdAt": 1758269213821,
+        "expiresAt": 1758271013821,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758269377317_nxua9e83xna",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "FjjQGTSPtapWbwnaDUZfd3pd2NNJXzMDeh55nD9EMMq3",
+        "createdAt": 1758269377317,
+        "expiresAt": 1758271177317,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758269431028_6qy0f2hf499",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "Chxizzvkk69wBMg9JNzS8XKx1AWcQpfnZYfnxLUh3tu5",
+        "createdAt": 1758269431028,
+        "expiresAt": 1758271231028,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758269663955_sgizqzzqv47",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3F4WpzTbujFeJY8D8bYWR3nX5Sb4eEkDoyzXNPW1u6Le",
+        "createdAt": 1758269663955,
+        "expiresAt": 1758271463955,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758269797595_9ajvv103dp",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "E79x4tn9gyedEekPmuTEwDUHjLX33eiR3wsa54BGNe7b",
+        "createdAt": 1758269797595,
+        "expiresAt": 1758271597595,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758269812446_lzzvqyudkld",
+        "amount": 1,
+        "currency": "ETH",
+        "walletAddress": "6CJj82K8jant2FHvPimmADXcoio8Rbb4SMuEJvvTfYen",
+        "createdAt": 1758269812446,
+        "expiresAt": 1758271612446,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758272114573_5ljr4v24myq",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "DNBXDJFwEDCMWVZqpT9KQMDADVCCQprr37m9y9T2nBfz",
+        "createdAt": 1758272114573,
+        "expiresAt": 1758273914573,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758272332954_4fnq1pxcy68",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "2Q1RANbczJ2cneiWVwRAW87NSnLjfESL83Yqz1cx2SSK",
+        "createdAt": 1758272332954,
+        "expiresAt": 1758274132954,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758272759694_v2b2n27h2wf",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "ELnevS82TJsq4Cn6v9EnzpMndLJfihkBte591a1X3ruG",
+        "createdAt": 1758272759694,
+        "expiresAt": 1758274559694,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758272812253_gieoj6f28xk",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "4zn48AZZ96UZUPbLimLNPxntvCdqRXxQrFmYDXsp4qXN",
+        "createdAt": 1758272812253,
+        "expiresAt": 1758274612253,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758273349641_abpr91wklhf",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "J7hMke9PkDAfSufonLFRHfF8EzF6W8g8EZHfR7vcVV8t",
+        "createdAt": 1758273349641,
+        "expiresAt": 1758275149641,
+        "status": "completed",
+        "completedAt": 1758273377642,
+        "transactionHash": "63sPyCvNgGALzSt4GJNENfXqwiXoEKe7hdZtPVAAgG8SfkSwuW2xSisNqNHxnaqJ11NhAPQoGorZ5o8bwcrqvyaB"
+      },
+      {
+        "sessionId": "1757579119396_1758273388282_igky4lhbkj",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "2o2nKgDXc1qUPxSGp8KJ2oFdPicqSFUiLoF4QouMhZo5",
+        "createdAt": 1758273388282,
+        "expiresAt": 1758275188282,
+        "status": "completed",
+        "completedAt": 1758273392868,
+        "transactionHash": "63sPyCvNgGALzSt4GJNENfXqwiXoEKe7hdZtPVAAgG8SfkSwuW2xSisNqNHxnaqJ11NhAPQoGorZ5o8bwcrqvyaB"
+      },
+      {
+        "sessionId": "1757579119396_1758273423703_7vbvbk7zj4k",
+        "amount": 300,
+        "currency": "SOL",
+        "walletAddress": "H79pEidSsN9Qn24tpLxcprVxh5kSnVnkE7THoQzBc8dx",
+        "createdAt": 1758273423703,
+        "expiresAt": 1758275223703,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758273476946_awnj5ai5ei8",
+        "amount": 200,
+        "currency": "SOL",
+        "walletAddress": "CSQid7pwZNEyxddgT5r3uQs1JukGu6C9unYALdFs932w",
+        "createdAt": 1758273476946,
+        "expiresAt": 1758275276946,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758273527757_ioz3l19fqa",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "Hw5gJCDSsVySqpgXhaTVeinvYAvEaUqkA6fPEdDpYQPj",
+        "createdAt": 1758273527757,
+        "expiresAt": 1758275327757,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758273539142_2u4dm4tq6eo",
+        "amount": 2,
+        "currency": "SOL",
+        "walletAddress": "EbE6hwRZCw4h2Jwj4L2UHLrErKVijwraqywCf1GQwnYQ",
+        "createdAt": 1758273539142,
+        "expiresAt": 1758275339142,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758273860530_ch3vodtubfj",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "EGwNRbMz2Ape3NVYriQL4NN6p1JTHVY2agmspfjerQPf",
+        "createdAt": 1758273860530,
+        "expiresAt": 1758275660530,
+        "status": "completed",
+        "completedAt": 1758273869906,
+        "transactionHash": "63sPyCvNgGALzSt4GJNENfXqwiXoEKe7hdZtPVAAgG8SfkSwuW2xSisNqNHxnaqJ11NhAPQoGorZ5o8bwcrqvyaB"
+      },
+      {
+        "sessionId": "1757579119396_1758274524689_pfxhtmm9erh",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "72mFvG7MM2UykcSbEyz2aRgGZhh65NfCKPmNt829sPen",
+        "createdAt": 1758274524689,
+        "expiresAt": 1758276324689,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758275102512_4xfnetzbkeo",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275102512,
+        "expiresAt": 1758276902512,
+        "status": "completed",
+        "completedAt": 1758275124318,
+        "transactionHash": "2bK6bN5bLvTiTimNEG3qFepB9ExHNWov8wWE9ggZkyjPvSQnHejqKZanGqYFAzgiSTVQTe986RyGyaNHf88yoV6c"
+      },
+      {
+        "sessionId": "1757579119396_1758275133476_8hdfq8hdn8u",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275133476,
+        "expiresAt": 1758276933476,
+        "status": "completed",
+        "completedAt": 1758275136974,
+        "transactionHash": "2bK6bN5bLvTiTimNEG3qFepB9ExHNWov8wWE9ggZkyjPvSQnHejqKZanGqYFAzgiSTVQTe986RyGyaNHf88yoV6c"
+      },
+      {
+        "sessionId": "1757579119396_1758275151106_nqhntiusuop",
+        "amount": 200,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275151106,
+        "expiresAt": 1758276951106,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758275176500_fbhtrolj88",
+        "amount": 2,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275176500,
+        "expiresAt": 1758276976500,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758275193757_27mp934d8vx",
+        "amount": 2,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275193757,
+        "expiresAt": 1758276993757,
+        "status": "completed",
+        "completedAt": 1758275210405,
+        "transactionHash": "2uzh1G4NoM1G1w87pQwJ6zGz2J15v3u6bLU9Km9UtvgaUMvAw7nQnfQUYtdvwzRg7Kv8anCjDymrkeR3yaDvqxyH"
+      },
+      {
+        "sessionId": "1757579119396_1758275222821_gc9geq3tpos",
+        "amount": 2,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275222821,
+        "expiresAt": 1758277022821,
+        "status": "completed",
+        "completedAt": 1758275226493,
+        "transactionHash": "2uzh1G4NoM1G1w87pQwJ6zGz2J15v3u6bLU9Km9UtvgaUMvAw7nQnfQUYtdvwzRg7Kv8anCjDymrkeR3yaDvqxyH"
+      },
+      {
+        "sessionId": "1757579119396_1758275628129_ajdm9ckx12r",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275628129,
+        "expiresAt": 1758277428129,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758275654832_4ug7066jps3",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275654832,
+        "expiresAt": 1758277454832,
+        "status": "completed",
+        "completedAt": 1758275677105,
+        "transactionHash": "4qgsrnzuU71ar4jXwsSoVTBgLutRQVFseif9T2JsifB1Nhvft6JHZgHy6g6u4yWCnP29QWsUNU2iWaWRL1fiHqJU",
+        "verifiedAmount": 0.999999237
+      },
+      {
+        "sessionId": "1757579119396_1758275684108_r41so987cug",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275684108,
+        "expiresAt": 1758277484108,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758275705022_k4xt20wwnf",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275705022,
+        "expiresAt": 1758277505022,
+        "status": "completed",
+        "completedAt": 1758275719582,
+        "transactionHash": "N879toqwYVggPzNjyntzon4MQBuBfGEbHypQrfrcCNTa5CgVCLGtLrsZed1LDnaY8HdLFV6h1xQv42RCkRpWB54",
+        "verifiedAmount": 1.0001229056
+      },
+      {
+        "sessionId": "1757579119396_1758275726326_3o6aqcocigt",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275726326,
+        "expiresAt": 1758277526326,
+        "status": "completed",
+        "completedAt": 1758275742995,
+        "transactionHash": "4E5Bb7Af83MaHcFqB25kHTcf7gh5bUtQ82LVG8BBPeXvc8W963aQLCKnu5C7f9tTvghsB9QaqFcXzDpWNcNrBx6d",
+        "verifiedAmount": 1.0001229056
+      },
+      {
+        "sessionId": "1757579119396_1758275751615_dkj1uuuks8q",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275751615,
+        "expiresAt": 1758277551615,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758275915598_otr02ko8mvh",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275915598,
+        "expiresAt": 1758277715598,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758275971753_b67phyycff5",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758275971753,
+        "expiresAt": 1758277771753,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758281091714_6x7pqvew9e",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758281091714,
+        "expiresAt": 1758282891714,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758281278566_c5znx2h0d2",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758281278566,
+        "expiresAt": 1758283078566,
+        "status": "completed",
+        "completedAt": 1758281306518,
+        "transactionHash": "2DDvg79D5GdHHLmNahYt3uEw29sji8QfbWovfEVxU8dFVXQzZUX9yonCNFeNbrDFdKiWts3xh8WdN4owJnAWqs2H",
+        "verifiedAmount": 0.9999181179000002
+      },
+      {
+        "sessionId": "1757579119396_1758281316900_lx8ujl72lfg",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758281316900,
+        "expiresAt": 1758283116900,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758283540011_dv4k1boaiv5",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758283540012,
+        "expiresAt": 1758285340012,
+        "status": "completed",
+        "completedAt": 1758283546392,
+        "transactionHash": "5x4rtVwYw4BUfqtv8pReuhc3cPRjrbGtg5Th236YE7HyfNrH1xHWZ3MaKnmjdDMmQfqwDVzXv1QFsWhr9QvcGBQ6",
+        "verifiedAmount": 1.0001241948000001
+      },
+      {
+        "sessionId": "1757579119396_1758283555409_q56vmvg6f3o",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758283555409,
+        "expiresAt": 1758285355409,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758283573647_v5b114xm14",
+        "amount": 2,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758283573647,
+        "expiresAt": 1758285373647,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758284126010_r7bw2bxmt8",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758284126010,
+        "expiresAt": 1758285926010,
+        "status": "completed",
+        "completedAt": 1758284128775,
+        "transactionHash": "32kvCH36jPCMBRxhrabjkaZyo2KhKqEAwkeFx9PfRBfinGBTziaaPbRKEpp4y4tcz3T3pEDGUom5Jemtb4PSj9FS",
+        "verifiedAmount": 1.0001247112999998
+      },
+      {
+        "sessionId": "1757579119396_1758284137833_x7wffvzik3i",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758284137833,
+        "expiresAt": 1758285937833,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757579119396_1758288577682_uejn89lmige",
+        "amount": 2,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758288577682,
+        "expiresAt": 1758290377682,
+        "status": "pending"
+      }
+    ]
   },
   {
     "id": "1757664730014",
@@ -269,12 +703,74 @@
     "id": "1757900000000",
     "username": "richplayer",
     "password": "rich@9486",
-    "balance": 9405.436249999999,
-    "holdBalance": 64,
+    "balance": 9313.438041666665,
+    "holdBalance": 125,
     "lastDailyRewardClaim": "2025-09-15T00:00:00.000Z",
-    "gamesPlayedToday": 26,
-    "lastGameDate": "2025-09-16T21:49:11.580Z",
-    "hasPlayedGame": true
+    "gamesPlayedToday": 23,
+    "lastGameDate": "2025-09-18T20:38:28.510Z",
+    "hasPlayedGame": true,
+    "paymentSessions": [
+      {
+        "sessionId": "1757900000000_1758230308631_a55csfnew",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758230308631,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757900000000_1758230554837_3hvgv7csh",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758230554838,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757900000000_1758230875284_a21idf6hx",
+        "amount": 2,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758230875284,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757900000000_1758231651998_18i7qdsf1t4",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "Cb83MjbXhh2zHddWboNRf2FFKdgEEstvztmfEwspCCZh",
+        "createdAt": 1758231651998,
+        "expiresAt": 1758233451998,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757900000000_1758232116668_4wuvcd1rook",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "2TkwhGXfKSepjUbxsZaQ4hoDzY7nuUZd8Une5A2nB1WB",
+        "createdAt": 1758232116668,
+        "expiresAt": 1758233916668,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757900000000_1758232399408_69d0oqbheyi",
+        "amount": 1,
+        "currency": "SOL",
+        "walletAddress": "H1RH5r9g6DTcGf6KVZzxY3q8StmSnnAPcrkH1Mngsyz3",
+        "createdAt": 1758232399408,
+        "expiresAt": 1758234199408,
+        "status": "pending"
+      },
+      {
+        "sessionId": "1757900000000_1758274970251_3rnffah27lj",
+        "amount": 10,
+        "currency": "SOL",
+        "walletAddress": "3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv",
+        "createdAt": 1758274970251,
+        "expiresAt": 1758276770251,
+        "status": "pending"
+      }
+    ]
   },
   {
     "id": "1758003136833",
@@ -304,11 +800,98 @@
     "id": "1758093390984",
     "username": "mmm",
     "password": "mmm@1234",
-    "balance": 0.1,
-    "holdBalance": 0,
-    "gamesPlayedToday": 2,
-    "lastGameDate": "2025-09-17T07:25:54.284Z",
+    "balance": 9.125000000000002,
+    "holdBalance": 12,
+    "gamesPlayedToday": 7,
+    "lastGameDate": "2025-09-17T11:00:57.413Z",
     "hasPlayedGame": true,
     "lastDailyRewardClaim": "2025-09-17T07:26:02.922Z"
+  },
+  {
+    "id": "1758351729183",
+    "username": "xem",
+    "password": "xem@123",
+    "balance": 0,
+    "holdBalance": 0
+  },
+  {
+    "id": "1758360000001",
+    "username": "clipper001",
+    "password": "clip123456",
+    "balance": 5234.50,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000002",
+    "username": "clipper002",
+    "password": "clip123456",
+    "balance": 6789.25,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000003",
+    "username": "clipper003",
+    "password": "clip123456",
+    "balance": 7891.75,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000004",
+    "username": "clipper004",
+    "password": "clip123456",
+    "balance": 8456.30,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000005",
+    "username": "clipper005",
+    "password": "clip123456",
+    "balance": 9123.80,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000006",
+    "username": "clipper006",
+    "password": "clip123456",
+    "balance": 5678.90,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000007",
+    "username": "clipper007",
+    "password": "clip123456",
+    "balance": 7234.15,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000008",
+    "username": "clipper008",
+    "password": "clip123456",
+    "balance": 8765.40,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000009",
+    "username": "clipper009",
+    "password": "clip123456",
+    "balance": 9345.65,
+    "holdBalance": 0,
+    "isClipper": true
+  },
+  {
+    "id": "1758360000010",
+    "username": "clipper010",
+    "password": "clip123456",
+    "balance": 9987.20,
+    "holdBalance": 0,
+    "isClipper": true
   }
 ]
