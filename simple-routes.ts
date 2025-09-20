@@ -8,6 +8,14 @@ import { generateUserPaymentAddress, checkPaymentToUserAddress, getMainWalletAdd
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
+  console.log('🔧 Creating HTTP server for WebSocket support');
+  
+  // Ensure the server is ready for WebSocket upgrades
+  httpServer.on('upgrade', (request, socket, head) => {
+    console.log('🔄 HTTP upgrade request intercepted:', request.url);
+    console.log('🔄 Upgrade request headers:', request.headers);
+  });
+  
   // Cleanup expired addresses on server start
   cleanupExpiredAddresses();
   
@@ -472,6 +480,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({
           success: false,
           message: 'User not found'
+        });
+      }
+
+      // Check if user is a clipper account (cannot withdraw)
+      if (user.isClipper) {
+        return res.status(403).json({
+          success: false,
+          message: 'Withdrawals are not allowed for this account type'
         });
       }
 
@@ -1140,9 +1156,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // Create WebSocket server with proper configuration
   const wss = new WebSocketServer({ 
     server: httpServer,
-    path: '/ws'
+    path: '/ws',
+    perMessageDeflate: false, // Disable compression for better compatibility
+    verifyClient: (info) => {
+      console.log('🔍 WebSocket client verification:', {
+        origin: info.origin,
+        secure: info.secure,
+        req: info.req.url
+      });
+      return true; // Accept all connections
+    }
+  });
+
+  console.log('🔌 WebSocket server created with path: /ws');
+  console.log('🔌 WebSocket server listening on:', httpServer.address());
+  
+  // Override the upgrade handler to ensure it works
+  httpServer.on('upgrade', (request, socket, head) => {
+    console.log('🔄 HTTP upgrade request received:', request.url);
+    console.log('🔄 Upgrade headers:', request.headers);
+    console.log('🔄 Connection header:', request.headers.connection);
+    console.log('🔄 Upgrade header:', request.headers.upgrade);
+    console.log('🔄 WebSocket server clients:', wss.clients.size);
+    
+    // Handle WebSocket upgrade manually if needed
+    if (request.url?.startsWith('/ws')) {
+      console.log('🎯 Handling WebSocket upgrade for:', request.url);
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        console.log('✅ WebSocket upgrade handled successfully');
+        wss.emit('connection', ws, request);
+      });
+    }
   });
 
   // Create initial rooms for both regions if none exist
@@ -1151,9 +1198,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     createRoom('eu', 1, 'normal');
   }
 
+  // Health check endpoint
+  app.get('/health', (req, res) => {
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      websocket: 'active',
+      websocketPath: '/ws',
+      rooms: gameRooms.size,
+      totalPlayers: Array.from(gameRooms.values()).reduce((sum, room) => sum + room.players.size, 0),
+      serverAddress: httpServer.address()
+    });
+  });
+
+  // WebSocket health check endpoint
+  app.get('/ws-health', (req, res) => {
+    res.json({
+      websocket: 'active',
+      path: '/ws',
+      connections: wss.clients.size,
+      server: 'running'
+    });
+  });
+
+  // Add error handling for WebSocket server
+  wss.on('error', (error) => {
+    console.error('❌ WebSocket server error:', error);
+  });
+
   wss.on("connection", function connection(ws: any, req: any) {
     const playerId = `player_${Date.now()}_${Math.random()}`;
-    console.log(`🔌 New WebSocket connection attempt. Player: ${playerId}, Total connections: ${wss.clients.size}`);
+    console.log(`🔌 New WebSocket connection established. Player: ${playerId}, Total connections: ${wss.clients.size}`);
+    console.log(`🔌 Connection from: ${req.headers.origin || 'unknown origin'}`);
+    console.log(`🔌 Request URL: ${req.url}`);
+    console.log(`🔌 WebSocket ready state: ${ws.readyState}`);
     
     // Extract room ID, region, and mode from query parameters 
     let url: URL;
