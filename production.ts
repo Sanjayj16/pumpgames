@@ -464,6 +464,60 @@ io.on("connection", (socket) => {
     socket.emit("friend-requests", requests);
   });
 
+  // Game-related event handlers
+  socket.on('playerUpdate', (data) => {
+    // Broadcast player update to all other clients in the same room
+    socket.broadcast.emit('message', {
+      type: 'players',
+      players: [data]
+    });
+  });
+
+  socket.on('boostFood', (data) => {
+    // Broadcast boost food to all other clients
+    socket.broadcast.emit('message', data);
+  });
+
+  socket.on('moneyCrate', (data) => {
+    // Broadcast money crate to all other clients
+    socket.broadcast.emit('message', data);
+  });
+
+  socket.on('gameOver', (data) => {
+    // Broadcast game over to all other clients
+    socket.broadcast.emit('message', data);
+  });
+
+  socket.on('ghostModeEnd', (data) => {
+    // Broadcast ghost mode end to all other clients
+    socket.broadcast.emit('message', data);
+  });
+
+  socket.on('cashOutCancelled', (data) => {
+    // Broadcast cash out cancellation to all other clients
+    socket.broadcast.emit('message', data);
+  });
+
+  socket.on('cashingOut', (data) => {
+    // Broadcast cash out progress to all other clients
+    socket.broadcast.emit('message', data);
+  });
+
+  socket.on('cashOutComplete', (data) => {
+    // Broadcast cash out completion to all other clients
+    socket.broadcast.emit('message', data);
+  });
+
+  socket.on('moneyCrateCollected', (data) => {
+    // Broadcast money crate collection to all other clients
+    socket.broadcast.emit('message', data);
+  });
+
+  socket.on('ping', (data) => {
+    // Respond to ping with pong
+    socket.emit('pong', { timestamp: Date.now() });
+  });
+
   // Handle disconnect
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
@@ -549,6 +603,16 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// WebSocket health check
+app.get("/ws-health", (_req, res) => {
+  res.status(200).json({
+    websocket: "active",
+    path: "/ws",
+    server: "running",
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Serve static files
 app.use(express.static("public"));
 
@@ -572,9 +636,11 @@ app.use(express.static("public"));
   httpServer.listen(port, host, () => {
     console.log(`🚀 Server running in ${isProduction ? "PRODUCTION" : "DEVELOPMENT"} mode`);
     console.log(`🌐 Listening on ${host}:${port}`);
-    console.log(`�� Health check: http://localhost:${port}/health`);
+    console.log(`📊 Health check: http://localhost:${port}/health`);
+    console.log(`🔌 WebSocket health check: http://localhost:${port}/ws-health`);
     console.log(`🔌 Socket.IO path: /socket.io`);
-    console.log(`�� CORS allowed origins:`, isProduction ? [
+    console.log(`🔌 WebSocket path: /ws`);
+    console.log(`🌍 CORS allowed origins:`, isProduction ? [
       process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
       "https://harmonious-boba-11ae9e.netlify.app",
       "http://localhost:5173",
