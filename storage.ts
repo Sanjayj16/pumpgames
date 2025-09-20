@@ -7,6 +7,10 @@ import {
   type InsertGameParticipant,
   type DailyCrate,
   type InsertDailyCrate,
+  type Friend,
+  type InsertFriend,
+  type FriendRequest,
+  type InsertFriendRequest,
   type GameState,
   type Player,
   type Direction,
@@ -14,6 +18,8 @@ import {
   games,
   gameParticipants,
   dailyCrates,
+  friends,
+  friendRequests,
   gameStates
 } from "@shared/schema";
 import { db } from "./db";
@@ -41,6 +47,15 @@ export interface IStorage {
   // Daily crate operations
   getLastDailyCrate(userId: string): Promise<DailyCrate | undefined>;
   claimDailyCrate(userId: string, reward: number): Promise<DailyCrate>;
+
+  // Friends operations
+  getUserFriends(userId: string): Promise<Friend[]>;
+  addFriend(userId: string, friendId: string): Promise<Friend>;
+  removeFriend(userId: string, friendId: string): Promise<void>;
+  sendFriendRequest(fromUserId: string, toUserId: string): Promise<FriendRequest>;
+  getFriendRequests(userId: string): Promise<FriendRequest[]>;
+  acceptFriendRequest(requestId: string): Promise<void>;
+  declineFriendRequest(requestId: string): Promise<void>;
 
   // Game state operations
   getGameState(gameId: string): Promise<GameState | undefined>;
@@ -261,6 +276,75 @@ export class DatabaseStorage implements IStorage {
 
   async removeGameState(gameId: string): Promise<void> {
     await db.delete(gameStates).where(eq(gameStates.id, gameId));
+  }
+
+  // Friends operations
+  async getUserFriends(userId: string): Promise<Friend[]> {
+    return await db
+      .select()
+      .from(friends)
+      .where(eq(friends.userId, userId));
+  }
+
+  async addFriend(userId: string, friendId: string): Promise<Friend> {
+    const [friend] = await db
+      .insert(friends)
+      .values({ userId, friendId })
+      .returning();
+    return friend;
+  }
+
+  async removeFriend(userId: string, friendId: string): Promise<void> {
+    await db
+      .delete(friends)
+      .where(and(eq(friends.userId, userId), eq(friends.friendId, friendId)));
+  }
+
+  async sendFriendRequest(fromUserId: string, toUserId: string): Promise<FriendRequest> {
+    const [request] = await db
+      .insert(friendRequests)
+      .values({
+        fromUserId,
+        toUserId,
+        status: "pending"
+      })
+      .returning();
+    return request;
+  }
+
+  async getFriendRequests(userId: string): Promise<FriendRequest[]> {
+    return await db
+      .select()
+      .from(friendRequests)
+      .where(and(eq(friendRequests.toUserId, userId), eq(friendRequests.status, "pending")))
+      .orderBy(desc(friendRequests.createdAt));
+  }
+
+  async acceptFriendRequest(requestId: string): Promise<void> {
+    // Get the request first
+    const [request] = await db
+      .select()
+      .from(friendRequests)
+      .where(eq(friendRequests.id, requestId));
+
+    if (!request) return;
+
+    // Update request status
+    await db
+      .update(friendRequests)
+      .set({ status: "accepted" })
+      .where(eq(friendRequests.id, requestId));
+
+    // Add both users as friends (bidirectional)
+    await this.addFriend(request.fromUserId, request.toUserId);
+    await this.addFriend(request.toUserId, request.fromUserId);
+  }
+
+  async declineFriendRequest(requestId: string): Promise<void> {
+    await db
+      .update(friendRequests)
+      .set({ status: "declined" })
+      .where(eq(friendRequests.id, requestId));
   }
 }
 
