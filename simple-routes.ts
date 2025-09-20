@@ -1153,15 +1153,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   wss.on("connection", function connection(ws: any, req: any) {
     const playerId = `player_${Date.now()}_${Math.random()}`;
-    console.log(`Player ${playerId} attempting to join. Total WebSocket connections: ${wss.clients.size}`);
+    console.log(`🔌 New WebSocket connection attempt. Player: ${playerId}, Total connections: ${wss.clients.size}`);
     
     // Extract room ID, region, and mode from query parameters 
-    const url = new URL(req.url, `http://${req.headers.host}`);
+    let url: URL;
+    try {
+      url = new URL(req.url, `http://${req.headers.host}`);
+    } catch (error) {
+      console.error(`❌ Invalid WebSocket URL: ${req.url}`, error);
+      ws.close(1002, 'Invalid URL');
+      return;
+    }
+    
     const requestedRoomId = parseInt(url.searchParams.get('room') || '1');
     const requestedRegion = url.searchParams.get('region') || 'us';
     const gameMode = url.searchParams.get('mode') || 'normal'; // 'friends' or 'normal'
     
-    console.log(`🎮 Player ${playerId} connecting with mode: ${gameMode}, region: ${requestedRegion}, room: ${requestedRoomId}`);
+    console.log(`🎮 Player ${playerId} connecting - Mode: ${gameMode}, Region: ${requestedRegion}, Room: ${requestedRoomId}`);
     
     // Validate region
     if (requestedRegion !== 'us' && requestedRegion !== 'eu') {
@@ -1261,7 +1269,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const message = JSON.parse(data.toString());
         
-        if (message.type === 'playerUpdate') {
+        if (message.type === 'ping') {
+          // Respond to ping with pong
+          ws.send(JSON.stringify({
+            type: 'pong',
+            timestamp: message.timestamp,
+            serverTime: Date.now()
+          }));
+          return;
+        } else if (message.type === 'playerUpdate') {
           const player = targetRoom.players.get(playerId);
           if (player) {
             // Check if ghost mode should end (player moved or boosted)
@@ -1310,9 +1326,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
+    // Handle errors
+    ws.on("error", function error(err: Error) {
+      console.error(`❌ WebSocket error for player ${playerId} in room ${finalRoomKey}:`, err);
+      
+      // Clean up on error
+      if (targetRoom.players.has(playerId)) {
+        targetRoom.players.delete(playerId);
+        targetRoom.gameState.players.delete(playerId);
+      }
+      playerToRoom.delete(playerId);
+      
+      // Update arena size and broadcast changes
+      updateArenaSize(targetRoom);
+      broadcastPlayerList();
+    });
+
     // Handle disconnect
     ws.on("close", function close(code: number, reason: Buffer) {
-      console.log(`Player ${playerId} left room ${finalRoomKey}. Code: ${code}, Reason: ${reason.toString()}`);
+      const reasonStr = reason ? reason.toString() : 'No reason provided';
+      console.log(`❌ Player ${playerId} left room ${finalRoomKey}. Code: ${code}, Reason: ${reasonStr}, WasClean: ${code === 1000}`);
       
       // Remove player from room
       if (targetRoom.players.has(playerId)) {
@@ -1321,7 +1354,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       playerToRoom.delete(playerId);
-      console.log(`Room ${finalRoomKey} now has ${targetRoom.players.size}/${targetRoom.maxPlayers} players`);
+      console.log(`🏠 Room ${finalRoomKey} now has ${targetRoom.players.size}/${targetRoom.maxPlayers} players`);
       
       // Update arena size based on reduced player count
       updateArenaSize(targetRoom);
@@ -1333,12 +1366,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Send game state updates
     const gameLoop = setInterval(() => {
       if (ws.readyState === 1) { // WebSocket.OPEN
-        const players = Array.from(targetRoom.gameState.players.values());
-        ws.send(JSON.stringify({
-          type: 'players',
-          players: players
-        }));
+        try {
+          const players = Array.from(targetRoom.gameState.players.values());
+          ws.send(JSON.stringify({
+            type: 'players',
+            players: players
+          }));
+        } catch (error) {
+          console.error(`❌ Error sending game state to player ${playerId}:`, error);
+          clearInterval(gameLoop);
+        }
       } else {
+        console.log(`🔄 Clearing game loop for player ${playerId} - WebSocket not open (readyState: ${ws.readyState})`);
         clearInterval(gameLoop);
       }
     }, 50); // 20 FPS
