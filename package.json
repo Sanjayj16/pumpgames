@@ -15,7 +15,7 @@
   "dependencies": {
     "express": "^4.22.0",
     "ws": "^8.19.0",
-    "cross-env": "^10.1.0",
+    "cross-env": "^10.0.0",
     "esbuild": "^0.26.0",
     "@solana/web3.js": "^1.95.3",
     "cors": "^2.8.5",
