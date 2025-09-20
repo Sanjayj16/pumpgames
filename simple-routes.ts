@@ -823,28 +823,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const playerToRoom = new Map();
 
   // Create basic rooms with dynamic player capacity and bots
-  function createRoom(region: string, id: number) {
+  function createRoom(region: string, id: number, gameMode: string = 'normal') {
     const roomKey = `${region}:${id}`;
     if (!gameRooms.has(roomKey)) {
+      const isFriendMode = gameMode === 'friends';
       const room = {
         id,
         region,
         players: new Map(),
         bots: new Map(),
-        maxPlayers: 80, // Increased from 8 to 80
+        maxPlayers: isFriendMode ? 2 : 80, // Only 2 players in friend mode
+        gameMode: gameMode,
         gameState: {
           players: new Map(),
           food: [],
           lastUpdate: Date.now(),
-          arenaSize: calculateArenaSize(15) // Initial arena size for 15 bots
+          arenaSize: calculateArenaSize(isFriendMode ? 0 : 15) // No bots in friend mode
         }
       };
       gameRooms.set(roomKey, room);
       
-      // Create initial bots
-      createBots(room, 15);
-      
-      console.log(`Created room ${region}/${id} with capacity 80 players and 15 bots`);
+      // Only create bots for normal mode
+      if (!isFriendMode) {
+        createBots(room, 15);
+        console.log(`Created room ${region}/${id} in normal mode with capacity 80 players and 15 bots`);
+      } else {
+        console.log(`Created room ${region}/${id} in friend mode with capacity 2 players and no bots`);
+      }
     }
   }
 
@@ -1107,16 +1112,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return { x: spawnX, y: spawnY, isOuterRing: true };
   }
 
-  function findBestRoom(region: string) {
-    for (const [key, room] of gameRooms.entries()) {
-      if (room.region === region && room.players.size < room.maxPlayers) {
-        return room;
+  function findBestRoom(region: string, gameMode: string = 'normal') {
+    // For friend mode, look for existing friend rooms first
+    if (gameMode === 'friends') {
+      for (const [key, room] of gameRooms.entries()) {
+        if (room.region === region && room.gameMode === 'friends' && room.players.size < room.maxPlayers) {
+          console.log(`🎮 Found existing friend room: ${room.region}:${room.id} with ${room.players.size} players`);
+          return room;
+        }
       }
+      // Create new friend room if none available
+      const newRoomId = Date.now(); // Use timestamp for unique room IDs
+      console.log(`🎮 Creating new friend room: ${region}:${newRoomId}`);
+      createRoom(region, newRoomId, gameMode);
+      return gameRooms.get(`${region}:${newRoomId}`);
+    } else {
+      // Normal mode - use existing logic
+      for (const [key, room] of gameRooms.entries()) {
+        if (room.region === region && room.gameMode === 'normal' && room.players.size < room.maxPlayers) {
+          return room;
+        }
+      }
+      // Create new normal room if none available
+      const newRoomId = gameRooms.size + 1;
+      createRoom(region, newRoomId, gameMode);
+      return gameRooms.get(`${region}:${newRoomId}`);
     }
-    // Create new room if none available
-    const newRoomId = gameRooms.size + 1;
-    createRoom(region, newRoomId);
-    return gameRooms.get(`${region}:${newRoomId}`);
   }
 
   const wss = new WebSocketServer({ 
@@ -1126,18 +1147,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Create initial rooms for both regions if none exist
   if (gameRooms.size === 0) {
-    createRoom('us', 1);
-    createRoom('eu', 1);
+    createRoom('us', 1, 'normal');
+    createRoom('eu', 1, 'normal');
   }
 
   wss.on("connection", function connection(ws: any, req: any) {
     const playerId = `player_${Date.now()}_${Math.random()}`;
     console.log(`Player ${playerId} attempting to join. Total WebSocket connections: ${wss.clients.size}`);
     
-    // Extract room ID and region from query parameters
+    // Extract room ID, region, and mode from query parameters 
     const url = new URL(req.url, `http://${req.headers.host}`);
     const requestedRoomId = parseInt(url.searchParams.get('room') || '1');
     const requestedRegion = url.searchParams.get('region') || 'us';
+    const gameMode = url.searchParams.get('mode') || 'normal'; // 'friends' or 'normal'
+    
+    console.log(`🎮 Player ${playerId} connecting with mode: ${gameMode}, region: ${requestedRegion}, room: ${requestedRoomId}`);
     
     // Validate region
     if (requestedRegion !== 'us' && requestedRegion !== 'eu') {
@@ -1150,7 +1174,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     // Always find the best available room
-    let targetRoom = findBestRoom(requestedRegion);
+    let targetRoom = findBestRoom(requestedRegion, gameMode);
+    console.log(`🏠 Found room ${targetRoom.region}:${targetRoom.id} with mode: ${targetRoom.gameMode}, players: ${targetRoom.players.size}/${targetRoom.maxPlayers}`);
     
     // Check if room is full
     if (targetRoom.players.size >= targetRoom.maxPlayers) {
@@ -1199,10 +1224,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Broadcast player list to all players in the room
     const broadcastPlayerList = () => {
-      const players = Array.from(targetRoom.gameState.players.values());
+      const allPlayers = Array.from(targetRoom.gameState.players.values());
+      
+      // Filter out bots for friend mode rooms
+      const playersToSend = targetRoom.gameMode === 'friends' 
+        ? allPlayers.filter(player => !player.id.startsWith('bot_'))
+        : allPlayers;
+        
       const message = JSON.stringify({
         type: 'players',
-        players: players
+        players: playersToSend
       });
       
       targetRoom.players.forEach((_, pid) => {
@@ -1248,6 +1279,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (player && player.isGhost) {
             player.isGhost = false;
             console.log(`👻 Player ${playerId} exited ghost mode (boosted)`);
+          }
+        } else if (message.type === 'gameOver') {
+          // Handle game over for friend mode
+          if (targetRoom.gameMode === 'friends' && message.reason === 'friend_mode_ended') {
+            console.log(`🎮 Friend mode game ended in room ${targetRoom.region}:${targetRoom.id}`);
+            
+            // Mark all players in the room as dead
+            targetRoom.players.forEach((player, id) => {
+              player.isDead = true;
+              player.gameOver = true;
+              targetRoom.gameState.players.set(id, player);
+            });
+            
+            // Broadcast game over to all players in the room
+            const gameOverMessage = JSON.stringify({
+              type: 'friendGameEnded',
+              reason: 'friend_mode_ended'
+            });
+            
+            targetRoom.players.forEach((playerData: any, playerId: string) => {
+              if (playerData.ws && playerData.ws.readyState === 1) {
+                playerData.ws.send(gameOverMessage);
+              }
+            });
           }
         }
       } catch (error) {
@@ -1356,27 +1411,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setInterval(() => {
     gameRooms.forEach((room) => {
       // Ensure minimum bot count
-      const currentBotCount = room.bots ? room.bots.size : 0;
-      const minBots = 15;
-      
-      if (currentBotCount < minBots) {
-        if (!room.bots) {
-          room.bots = new Map();
+      // Only create bots for normal mode rooms
+      if (room.gameMode !== 'friends') {
+        const currentBotCount = room.bots ? room.bots.size : 0;
+        const minBots = 15;
+        
+        if (currentBotCount < minBots) {
+          if (!room.bots) {
+            room.bots = new Map();
+          }
+          const botsToAdd = minBots - currentBotCount;
+          createBots(room, botsToAdd);
+          updateArenaSize(room);
         }
-        const botsToAdd = minBots - currentBotCount;
-        createBots(room, botsToAdd);
-        updateArenaSize(room);
       }
       
-      // Update bot behavior
-      updateBots(room);
+      // Update bot behavior (only for normal mode rooms)
+      if (room.gameMode !== 'friends') {
+        updateBots(room);
+      }
       
-      // Broadcast updated player list including bots
+      // Broadcast updated player list (filter bots for friend mode)
       if (room.players.size > 0) {
         const allPlayers = Array.from(room.gameState.players.values());
+        
+        // Filter out bots for friend mode rooms
+        const playersToSend = room.gameMode === 'friends' 
+          ? allPlayers.filter(player => !player.id.startsWith('bot_'))
+          : allPlayers;
+          
         const message = JSON.stringify({
           type: 'players',
-          players: allPlayers
+          players: playersToSend
         });
         
         room.players.forEach((_, playerId: string) => {
