@@ -21,7 +21,7 @@ import {
   friends,
   friendRequests,
   gameStates
-} from "@shared/schema";
+} from "./schema";
 import { db } from "./db";
 import { eq, desc, and, or } from "drizzle-orm";
 
