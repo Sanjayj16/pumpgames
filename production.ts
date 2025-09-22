@@ -33,6 +33,8 @@ const onlineUsers = new Map<string, Set<string>>();
 const friendRequests = new Map<string, Array<{ id: string; from: string; timestamp: string }>>();
 // Store user's friends list
 const userFriends = new Map<string, Set<string>>();
+// Store players in each room for friend mode
+const roomPlayers = new Map<string, Map<string, any>>();
 
 // Helper function to notify a user
 function notifyUser(username: string, event: string, data: any) {
@@ -56,6 +58,25 @@ io.on("connection", (socket) => {
     const roomName = `${region}:${roomId}`;
     socket.join(roomName);
     console.log(`🎮 User ${socket.id} joined room ${roomName} (mode: ${mode})`);
+    
+    // Initialize room players map if it doesn't exist
+    if (!roomPlayers.has(roomName)) {
+      roomPlayers.set(roomName, new Map());
+    }
+    
+    // Send existing players in the room to the new joiner
+    const existingPlayers = roomPlayers.get(roomName);
+    if (existingPlayers && existingPlayers.size > 0) {
+      const playersArray = Array.from(existingPlayers.values());
+      console.log(`🎮 Sending ${playersArray.length} existing players to new joiner`);
+      socket.emit('message', {
+        type: 'players',
+        players: playersArray,
+        roomId: roomId,
+        region: region,
+        mode: mode
+      });
+    }
   }
 
   // Listen for user joining
@@ -584,9 +605,25 @@ io.on("connection", (socket) => {
     const region = socket.handshake.query.region;
     const mode = socket.handshake.query.mode;
     
+    console.log(`🎮 Player update received:`, {
+      playerId: data.id,
+      segments: data.segments?.length || 0,
+      roomId: roomId,
+      region: region,
+      mode: mode
+    });
+    
     if (roomId && region) {
       const roomName = `${region}:${roomId}`;
-      console.log(`🎮 Player update from room ${roomName} (mode: ${mode})`);
+      
+      // Store player data in room
+      if (!roomPlayers.has(roomName)) {
+        roomPlayers.set(roomName, new Map());
+      }
+      const playerDataWithSocket = { ...data, socketId: socket.id };
+      roomPlayers.get(roomName)?.set(data.id, playerDataWithSocket);
+      
+      console.log(`🎮 Broadcasting to room ${roomName} (mode: ${mode})`);
       
       // Broadcast player update to all other clients in the same room
       socket.to(roomName).emit('message', {
@@ -655,6 +692,24 @@ io.on("connection", (socket) => {
         sockets.delete(socket.id);
         if (sockets.size === 0) {
           onlineUsers.delete(username);
+        }
+      }
+    }
+
+    // Remove from room players
+    const roomId = socket.handshake.query.room;
+    const region = socket.handshake.query.region;
+    if (roomId && region) {
+      const roomName = `${region}:${roomId}`;
+      const roomPlayersMap = roomPlayers.get(roomName);
+      if (roomPlayersMap) {
+        // Find and remove this player's data
+        for (const [playerId, playerData] of roomPlayersMap.entries()) {
+          if (playerData.socketId === socket.id) {
+            roomPlayersMap.delete(playerId);
+            console.log(`🎮 Removed player ${playerId} from room ${roomName}`);
+            break;
+          }
         }
       }
     }
