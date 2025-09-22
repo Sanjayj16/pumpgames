@@ -1260,9 +1260,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
     
-    // Always find the best available room
-    let targetRoom = findBestRoom(requestedRegion, gameMode);
-    console.log(`🏠 Found room ${targetRoom.region}:${targetRoom.id} with mode: ${targetRoom.gameMode}, players: ${targetRoom.players.size}/${targetRoom.maxPlayers}`);
+    // For friend mode, try to use the specific room ID first
+    let targetRoom;
+    if (gameMode === 'friends' && requestedRoomId) {
+      const roomKey = `${requestedRegion}:${requestedRoomId}`;
+      targetRoom = gameRooms.get(roomKey);
+      
+      if (targetRoom) {
+        console.log(`🎮 Using existing friend room: ${targetRoom.region}:${targetRoom.id} with ${targetRoom.players.size} players`);
+      } else {
+        // Create the specific friend room if it doesn't exist
+        console.log(`🎮 Creating specific friend room: ${requestedRegion}:${requestedRoomId}`);
+        createRoom(requestedRegion, requestedRoomId, gameMode);
+        targetRoom = gameRooms.get(roomKey);
+      }
+    } else {
+      // Use normal room finding logic
+      targetRoom = findBestRoom(requestedRegion, gameMode);
+    }
+    
+    console.log(`🏠 Using room ${targetRoom.region}:${targetRoom.id} with mode: ${targetRoom.gameMode}, players: ${targetRoom.players.size}/${targetRoom.maxPlayers}`);
     
     // Check if room is full
     if (targetRoom.players.size >= targetRoom.maxPlayers) {
