@@ -113,13 +113,31 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Listen for friend game invites
+  socket.on("invite-friend", ({ from, to, roomId, region }) => {
+    console.log(`🎮 Friend game invite: ${from} -> ${to} in room ${roomId}`);
+    const toSockets = onlineUsers.get(to);
+    if (toSockets) {
+      toSockets.forEach((socketId) => {
+        console.log(`🎮 Sending game invite to socket ${socketId} for user ${to}`);
+        io.to(socketId).emit("game-invite", { from, roomId, region, mode: 'friends' });
+      });
+    } else {
+      console.log(`❌ User ${to} not found in online users`);
+    }
+  });
+
   // Listen for invite acceptance
   socket.on("accept-invite", ({ from, to, roomId, region, mode }) => {
+    console.log(`🎮 Invite accepted: ${to} accepted ${from}'s invite to room ${roomId}`);
     const fromSockets = onlineUsers.get(from);
     if (fromSockets) {
       fromSockets.forEach((socketId) => {
+        console.log(`🎮 Sending invite accepted to socket ${socketId} for user ${from}`);
         io.to(socketId).emit("invite-accepted", { to, roomId, region, mode });
       });
+    } else {
+      console.log(`❌ User ${from} not found in online users`);
     }
   });
 
@@ -135,15 +153,27 @@ io.on("connection", (socket) => {
     console.log(`Friend request attempt: ${from} -> ${to}`);
     
     try {
-      const fromUser = await storage.getUserByUsername(from);
-      const toUser = await storage.getUserByUsername(to);
+      // Get or create users
+      let fromUser = await storage.getUserByUsername(from);
+      let toUser = await storage.getUserByUsername(to);
 
-      if (!fromUser || !toUser) {
-        console.log('One or both users not found');
-        if (typeof acknowledgment === 'function') {
-          acknowledgment({ success: false, message: "User not found" });
-        }
-        return;
+      // Create users if they don't exist
+      if (!fromUser) {
+        console.log(`Creating user: ${from}`);
+        fromUser = await storage.createUser({
+          username: from,
+          password: 'auto_generated', // Auto-generated password for friend system
+          balance: '1.05' // Starting balance
+        });
+      }
+
+      if (!toUser) {
+        console.log(`Creating user: ${to}`);
+        toUser = await storage.createUser({
+          username: to,
+          password: 'auto_generated', // Auto-generated password for friend system
+          balance: '1.05' // Starting balance
+        });
       }
 
       const request = await storage.sendFriendRequest(fromUser.id, toUser.id);
@@ -184,15 +214,42 @@ io.on("connection", (socket) => {
     console.log(`Friend request accepted: ${from} accepted ${to}'s request`);
     
     try {
-      const fromUser = await storage.getUserByUsername(from);
-      const toUser = await storage.getUserByUsername(to);
+      // Get or create users
+      let fromUser = await storage.getUserByUsername(from);
+      let toUser = await storage.getUserByUsername(to);
 
-      if (!fromUser || !toUser) {
-        console.log('One or both users not found');
+      // Create users if they don't exist
+      if (!fromUser) {
+        console.log(`Creating user: ${from}`);
+        fromUser = await storage.createUser({
+          username: from,
+          password: 'auto_generated',
+          balance: '1.05'
+        });
+      }
+
+      if (!toUser) {
+        console.log(`Creating user: ${to}`);
+        toUser = await storage.createUser({
+          username: to,
+          password: 'auto_generated',
+          balance: '1.05'
+        });
+      }
+
+      // Find the pending friend request from toUser to fromUser
+      const friendRequests = await storage.getFriendRequests(fromUser.id);
+      const pendingRequest = friendRequests.find(req => 
+        req.fromUserId === toUser.id && req.status === 'pending'
+      );
+
+      if (!pendingRequest) {
+        console.log('No pending friend request found');
         return;
       }
 
-      await storage.acceptFriendRequest(toUser.id);
+      // Accept friend request in database (this also adds both users as friends)
+      await storage.acceptFriendRequest(pendingRequest.id);
       
       notifyUser(from, "friend-added", { username: to });
       notifyUser(to, "friend-added", { username: from });
@@ -242,15 +299,42 @@ io.on("connection", (socket) => {
     if (!from || !to) return;
     
     try {
-      const fromUser = await storage.getUserByUsername(from);
-      const toUser = await storage.getUserByUsername(to);
+      // Get or create users
+      let fromUser = await storage.getUserByUsername(from);
+      let toUser = await storage.getUserByUsername(to);
 
-      if (!fromUser || !toUser) {
-        console.log('One or both users not found');
+      // Create users if they don't exist
+      if (!fromUser) {
+        console.log(`Creating user: ${from}`);
+        fromUser = await storage.createUser({
+          username: from,
+          password: 'auto_generated',
+          balance: '1.05'
+        });
+      }
+
+      if (!toUser) {
+        console.log(`Creating user: ${to}`);
+        toUser = await storage.createUser({
+          username: to,
+          password: 'auto_generated',
+          balance: '1.05'
+        });
+      }
+
+      // Find the pending friend request from toUser to fromUser
+      const friendRequests = await storage.getFriendRequests(fromUser.id);
+      const pendingRequest = friendRequests.find(req => 
+        req.fromUserId === toUser.id && req.status === 'pending'
+      );
+
+      if (!pendingRequest) {
+        console.log('No pending friend request found');
         return;
       }
 
-      await storage.declineFriendRequest(toUser.id);
+      // Decline friend request in database
+      await storage.declineFriendRequest(pendingRequest.id);
       
       console.log(`Friend request declined from ${to} to ${from}`);
     } catch (error) {
@@ -261,8 +345,17 @@ io.on("connection", (socket) => {
   // Get user's friends list
   socket.on("get-friends", async (username) => {
     try {
-      const user = await storage.getUserByUsername(username);
-      if (!user) return;
+      let user = await storage.getUserByUsername(username);
+      
+      // Create user if they don't exist
+      if (!user) {
+        console.log(`Creating user: ${username}`);
+        user = await storage.createUser({
+          username: username,
+          password: 'auto_generated',
+          balance: '1.05'
+        });
+      }
 
       const friends = await storage.getUserFriends(user.id);
       const friendsList = await Promise.all(
@@ -286,8 +379,17 @@ io.on("connection", (socket) => {
   // Get user's pending friend requests
   socket.on("get-friend-requests", async (username) => {
     try {
-      const user = await storage.getUserByUsername(username);
-      if (!user) return;
+      let user = await storage.getUserByUsername(username);
+      
+      // Create user if they don't exist
+      if (!user) {
+        console.log(`Creating user: ${username}`);
+        user = await storage.createUser({
+          username: username,
+          password: 'auto_generated',
+          balance: '1.05'
+        });
+      }
 
       const requests = await storage.getFriendRequests(user.id);
       const requestsList = await Promise.all(
