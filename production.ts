@@ -626,13 +626,9 @@ io.on("connection", (socket) => {
       console.log(`🎮 Broadcasting to room ${roomName} (mode: ${mode})`);
       
       // Broadcast player update to all other clients in the same room
-      // Send all players in the room, not just the updated one
-      const allPlayersInRoom = Array.from(roomPlayers.get(roomName)?.values() || []);
-      console.log(`🎮 Broadcasting ${allPlayersInRoom.length} players to room ${roomName}`);
-      
       socket.to(roomName).emit('message', {
         type: 'players',
-        players: allPlayersInRoom,
+        players: [data],
         roomId: roomId,
         region: region,
         mode: mode
