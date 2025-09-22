@@ -458,6 +458,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     }));
                   }
                   
+                  // In friend mode, end the game for both players
+                  if (room.gameMode === 'friends') {
+                    console.log(`🎮 Friend mode: Ending game for both players in room ${room.region}/${room.id}`);
+                    
+                    // Send game over to both players in friend mode
+                    const gameOverMessage = JSON.stringify({
+                      type: 'friendGameEnded',
+                      reason: 'friend_died',
+                      winner: otherPlayerId,
+                      loser: playerId
+                    });
+                    
+                    // Send to all players in the room
+                    room.players.forEach((player, id) => {
+                      wss.clients.forEach(client => {
+                        if ((client as any).playerId === id && client.readyState === WebSocket.OPEN) {
+                          client.send(gameOverMessage);
+                        }
+                      });
+                    });
+                    
+                    // Mark all players as dead in friend mode
+                    room.players.forEach((player, id) => {
+                      player.isDead = true;
+                      player.gameOver = true;
+                    });
+                  }
+                  
                   console.log(`💀 Player ${playerId} removed from room ${room.region}/${room.id}`);
                   break;
                 }
