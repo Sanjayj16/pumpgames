@@ -854,17 +854,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           players: new Map(),
           food: [],
           lastUpdate: Date.now(),
-          arenaSize: calculateArenaSize(isFriendMode ? 0 : 15) // No bots in friend mode
+          arenaSize: calculateArenaSize(isFriendMode ? 6 : 15) // 6 bots in friend mode, 15 in normal mode
         }
       };
       gameRooms.set(roomKey, room);
       
-      // Only create bots for normal mode
-      if (!isFriendMode) {
+      // Create bots for both modes - fewer bots in friend mode
+      if (isFriendMode) {
+        createBots(room, 6);
+        console.log(`Created room ${region}/${id} in friend mode with capacity 2 players and 6 bots`);
+      } else {
         createBots(room, 15);
         console.log(`Created room ${region}/${id} in normal mode with capacity 80 players and 15 bots`);
-      } else {
-        console.log(`Created room ${region}/${id} in friend mode with capacity 2 players and no bots`);
       }
     }
   }
@@ -1312,10 +1313,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const broadcastPlayerList = () => {
       const allPlayers = Array.from(targetRoom.gameState.players.values());
       
-      // Filter out bots for friend mode rooms
-      const playersToSend = targetRoom.gameMode === 'friends' 
-        ? allPlayers.filter(player => !player.id.startsWith('bot_'))
-        : allPlayers;
+      // Send all players including bots for both friend and normal mode
+      const playersToSend = allPlayers;
         
       const message = JSON.stringify({
         type: 'players',
@@ -1446,8 +1445,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (ws.readyState === 1) { // WebSocket.OPEN
         try {
           const players = Array.from(targetRoom.gameState.players.values());
+          const bots = Array.from(targetRoom.bots ? targetRoom.bots.values() : []);
+          
+          // Send players message (for backward compatibility)
           ws.send(JSON.stringify({
             type: 'players',
+            players: players
+          }));
+          
+          // Send gameWorld message with both bots and players
+          ws.send(JSON.stringify({
+            type: 'gameWorld',
+            bots: bots,
             players: players
           }));
         } catch (error) {
@@ -1527,35 +1536,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Bot update loop - runs every 200ms
   setInterval(() => {
     gameRooms.forEach((room) => {
-      // Ensure minimum bot count
-      // Only create bots for normal mode rooms
-      if (room.gameMode !== 'friends') {
-        const currentBotCount = room.bots ? room.bots.size : 0;
-        const minBots = 15;
-        
-        if (currentBotCount < minBots) {
-          if (!room.bots) {
-            room.bots = new Map();
-          }
-          const botsToAdd = minBots - currentBotCount;
-          createBots(room, botsToAdd);
-          updateArenaSize(room);
+      // Ensure minimum bot count for both modes
+      const currentBotCount = room.bots ? room.bots.size : 0;
+      const minBots = room.gameMode === 'friends' ? 6 : 15; // 6 bots for friend mode, 15 for normal mode
+      
+      if (currentBotCount < minBots) {
+        if (!room.bots) {
+          room.bots = new Map();
         }
+        const botsToAdd = minBots - currentBotCount;
+        createBots(room, botsToAdd);
+        updateArenaSize(room);
       }
       
-      // Update bot behavior (only for normal mode rooms)
-      if (room.gameMode !== 'friends') {
-        updateBots(room);
-      }
+      // Update bot behavior for both modes
+      updateBots(room);
       
       // Broadcast updated player list (filter bots for friend mode)
       if (room.players.size > 0) {
         const allPlayers = Array.from(room.gameState.players.values());
         
-        // Filter out bots for friend mode rooms
-        const playersToSend = room.gameMode === 'friends' 
-          ? allPlayers.filter(player => !player.id.startsWith('bot_'))
-          : allPlayers;
+        // Send all players including bots for both friend and normal mode
+        const playersToSend = allPlayers;
           
         const message = JSON.stringify({
           type: 'players',
