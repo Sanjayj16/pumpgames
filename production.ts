@@ -46,6 +46,17 @@ function notifyUser(username: string, event: string, data: any) {
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
+  
+  // Extract room information from query parameters
+  const roomId = socket.handshake.query.room;
+  const region = socket.handshake.query.region;
+  const mode = socket.handshake.query.mode;
+  
+  if (roomId && region) {
+    const roomName = `${region}:${roomId}`;
+    socket.join(roomName);
+    console.log(`🎮 User ${socket.id} joined room ${roomName} (mode: ${mode})`);
+  }
 
   // Listen for user joining
   socket.on("join", async (username: string) => {
@@ -568,11 +579,26 @@ io.on("connection", (socket) => {
 
   // Game-related event handlers
   socket.on('playerUpdate', (data) => {
-    // Broadcast player update to all other clients in the same room
-    socket.broadcast.emit('message', {
-      type: 'players',
-      players: [data]
-    });
+    // Get the room from the socket's query parameters
+    const roomId = socket.handshake.query.room;
+    const region = socket.handshake.query.region;
+    const mode = socket.handshake.query.mode;
+    
+    if (roomId && region) {
+      const roomName = `${region}:${roomId}`;
+      console.log(`🎮 Player update from room ${roomName} (mode: ${mode})`);
+      
+      // Broadcast player update to all other clients in the same room
+      socket.to(roomName).emit('message', {
+        type: 'players',
+        players: [data],
+        roomId: roomId,
+        region: region,
+        mode: mode
+      });
+    } else {
+      console.log(`❌ Player update without room info: roomId=${roomId}, region=${region}`);
+    }
   });
 
   socket.on('boostFood', (data) => {
