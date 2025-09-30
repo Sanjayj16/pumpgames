@@ -242,6 +242,23 @@ io.on("connection", (socket) => {
      * - Send current game state to the new player
      * - Broadcast new player to existing players
      */
+    // ============================================================================
+    // ROOM CAPACITY CHECK - MAX 80 PLAYERS PER ROOM
+    // ============================================================================
+    const room = getOrCreateRoom(roomName);
+    
+    // Check if room is full (max 80 players)
+    if (room.size >= 80) {
+      console.log(`❌ Room ${roomName} is FULL (${room.size}/80 players). Rejecting ${username}`);
+      socket.emit('roomFull', {
+        message: 'This room is full. Please try another room.',
+        currentPlayers: room.size,
+        maxPlayers: 80
+      });
+      socket.disconnect();
+      return;
+    }
+    
     const spawnPos = generateSpawnPosition();
     const newPlayer: PlayerState = {
       id: socket.id,
@@ -260,7 +277,6 @@ io.on("connection", (socket) => {
     };
     
     // Add player to room
-    const room = getOrCreateRoom(roomName);
     room.set(socket.id, newPlayer);
     
     // Send current game state to the new player (so they see existing players)
