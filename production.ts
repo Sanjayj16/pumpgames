@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { registerRoutes } from "./simple-routes";
 import { storage } from "./storage";
+import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "./multiplayer-types";
 
 const app = express();
 const httpServer = createServer(app);
@@ -34,6 +35,170 @@ const friendRequests = new Map<string, Array<{ id: string; from: string; timesta
 // Store user's friends list
 const userFriends = new Map<string, Set<string>>();
 
+// ============================================================================
+// MULTIPLAYER GAME STATE MANAGEMENT
+// ============================================================================
+
+/**
+ * Global game state - stores all active players across all rooms
+ * Structure: Map<roomId, Map<playerId, PlayerState>>
+ */
+const gameRooms = new Map<string, Map<string, PlayerState>>();
+
+/**
+ * Helper: Get or create a game room
+ */
+function getOrCreateRoom(roomId: string): Map<string, PlayerState> {
+  if (!gameRooms.has(roomId)) {
+    gameRooms.set(roomId, new Map());
+    console.log(`🎮 Created new game room: ${roomId}`);
+  }
+  return gameRooms.get(roomId)!;
+}
+
+/**
+ * Helper: Generate random spawn position for new player
+ * TODO: Implement smarter spawning away from other players
+ */
+function generateSpawnPosition(): { x: number; y: number } {
+  const arenaSize = 5000; // Match client arena size
+  const centerX = arenaSize / 2;
+  const centerY = arenaSize / 2;
+  const maxRadius = arenaSize * 0.4; // Spawn within 80% of arena
+  
+  const angle = Math.random() * Math.PI * 2;
+  const radius = Math.random() * maxRadius;
+  
+  return {
+    x: centerX + Math.cos(angle) * radius,
+    y: centerY + Math.sin(angle) * radius
+  };
+}
+
+/**
+ * Helper: Generate random snake color
+ * Expanded color palette to ensure different players get different colors
+ */
+function generatePlayerColor(): string {
+  const colors = [
+    // Vibrant colors for better distinction
+    '#00ff00', // Bright green
+    '#ff00ff', // Magenta
+    '#00ffff', // Cyan
+    '#ffff00', // Yellow
+    '#ff6b6b', // Red
+    '#4ecdc4', // Teal
+    '#45b7d1', // Light blue
+    '#f9ca24', // Orange
+    '#6c5ce7', // Purple
+    '#fd79a8', // Pink
+    '#fdcb6e', // Light orange
+    '#55efc4', // Mint
+    '#74b9ff', // Sky blue
+    '#a29bfe', // Lavender
+    '#ff7675', // Coral
+    '#00b894', // Sea green
+    '#e17055', // Terra cotta
+    '#0984e3', // Ocean blue
+    '#6c5ce7', // Deep purple
+    '#ffeaa7', // Light yellow
+  ];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// ============================================================================
+// TODO: SERVER-SIDE FOOD MANAGEMENT
+// ============================================================================
+/**
+ * TODO: Implement server-authoritative food system
+ * 
+ * Benefits:
+ * - Prevents cheating (client can't fake food collection)
+ * - Ensures all players see the same food
+ * - Server decides who gets food if multiple players are near
+ * 
+ * Implementation steps:
+ * 1. Create food spawn system on server
+ * 2. Track food state per room (Map<roomId, Food[]>)
+ * 3. Broadcast food positions to all clients on join
+ * 4. Handle 'eatFood' events from clients
+ * 5. Validate distance before giving points
+ * 6. Broadcast food removal to all clients
+ * 7. Respawn food at regular intervals
+ * 
+ * Example events:
+ * - socket.on('eatFood', (foodId) => { ... validate and broadcast ... })
+ * - socket.emit('foodSpawned', { food: [...] })
+ * - socket.emit('foodEaten', { foodId, playerId })
+ */
+
+// ============================================================================
+// TODO: SERVER-SIDE COLLISION DETECTION
+// ============================================================================
+/**
+ * TODO: Implement server-authoritative collision detection
+ * 
+ * Benefits:
+ * - Prevents fake deaths/kills
+ * - Fair gameplay across network latency
+ * - Server is source of truth for game outcomes
+ * 
+ * Implementation steps:
+ * 1. Track all player segments on server
+ * 2. Check collisions each update tick
+ * 3. Detect head-to-body collisions
+ * 4. Detect head-to-head collisions (bigger snake wins)
+ * 5. Generate food particles from dead snakes
+ * 6. Broadcast death events to all clients
+ * 7. Update leaderboard
+ * 
+ * Example collision check:
+ * function checkCollisions(room: Map<string, PlayerState>) {
+ *   for (const [id1, player1] of room) {
+ *     for (const [id2, player2] of room) {
+ *       if (id1 === id2) continue;
+ *       // Check if player1 head hits player2 body
+ *       for (const segment of player2.segments) {
+ *         const dist = distance(player1.head, segment);
+ *         if (dist < collisionRadius) {
+ *           handleCollision(player1, player2);
+ *         }
+ *       }
+ *     }
+ *   }
+ * }
+ */
+
+// ============================================================================
+// TODO: REAL-TIME LEADERBOARD
+// ============================================================================
+/**
+ * TODO: Implement live leaderboard updates
+ * 
+ * Implementation steps:
+ * 1. Track scores per room
+ * 2. Update leaderboard on player actions (eat food, kill, etc.)
+ * 3. Broadcast top 10 players every few seconds
+ * 4. Send full leaderboard on request
+ * 
+ * Example:
+ * function getLeaderboard(roomId: string): LeaderboardEntry[] {
+ *   const room = gameRooms.get(roomId);
+ *   if (!room) return [];
+ *   
+ *   return Array.from(room.values())
+ *     .map(p => ({ username: p.username, score: p.score, length: p.length }))
+ *     .sort((a, b) => b.score - a.score)
+ *     .slice(0, 10);
+ * }
+ * 
+ * setInterval(() => {
+ *   for (const [roomId, room] of gameRooms) {
+ *     io.to(roomId).emit('leaderboardUpdate', getLeaderboard(roomId));
+ *   }
+ * }, 5000); // Every 5 seconds
+ */
+
 // Helper function to notify a user
 function notifyUser(username: string, event: string, data: any) {
   const userSockets = onlineUsers.get(username);
@@ -52,10 +217,65 @@ io.on("connection", (socket) => {
   const region = socket.handshake.query.region;
   const mode = socket.handshake.query.mode;
   
+  // Ensure username is never undefined or empty
+  let username = socket.handshake.query.username as string;
+  if (!username || username === 'undefined' || username === 'null' || username.trim() === '') {
+    username = `Player${Math.floor(Math.random() * 9999)}`;
+  }
+  
+  let currentRoomId: string | null = null;
+  
   if (roomId && region) {
     const roomName = `${region}:${roomId}`;
+    currentRoomId = roomName;
     socket.join(roomName);
-    console.log(`🎮 User ${socket.id} joined room ${roomName} (mode: ${mode})`);
+    console.log(`🎮 User ${socket.id} (${username}) joined room ${roomName} (mode: ${mode})`);
+    
+    // ============================================================================
+    // MULTIPLAYER: NEW PLAYER JOINS
+    // ============================================================================
+    
+    /**
+     * Initialize new player in the game room
+     * - Assign spawn position and initial state
+     * - Send current game state to the new player
+     * - Broadcast new player to existing players
+     */
+    const spawnPos = generateSpawnPosition();
+    const newPlayer: PlayerState = {
+      id: socket.id,
+      username: username, // Already validated above
+      head: spawnPos,
+      direction: Math.random() * Math.PI * 2, // Random initial direction
+      speed: 2.5,
+      length: 10, // Starting length
+      color: generatePlayerColor(),
+      segments: [spawnPos], // Start with just head position
+      isBoosting: false,
+      score: 0,
+      money: 1.00, // Everyone starts with $1.00
+      kills: 0,    // No kills yet
+      lastUpdate: Date.now()
+    };
+    
+    // Add player to room
+    const room = getOrCreateRoom(roomName);
+    room.set(socket.id, newPlayer);
+    
+    // Send current game state to the new player (so they see existing players)
+    const gameState: GameStateSnapshot = {
+      players: Object.fromEntries(room),
+      timestamp: Date.now()
+    };
+    socket.emit('gameState', gameState);
+    console.log(`📤 Sent game state with ${room.size - 1} existing players to ${username}`);
+    
+    // Broadcast new player to all OTHER players in the room
+    socket.to(roomName).emit('playerJoined', {
+      player: newPlayer,
+      timestamp: Date.now()
+    });
+    console.log(`📢 Broadcasted new player ${username} to room ${roomName}`);
   }
 
   // Listen for user joining
@@ -577,8 +797,130 @@ io.on("connection", (socket) => {
     socket.emit("friend-requests", requests);
   });
 
-  // Game-related event handlers
-  socket.on('playerUpdate', (data) => {
+  // ============================================================================
+  // MULTIPLAYER: PLAYER POSITION UPDATES
+  // ============================================================================
+  
+  /**
+   * Handle player position/state updates
+   * - Update player state in server memory
+   * - Broadcast to all other players in the room
+   * 
+   * This is called frequently (e.g., every 50ms) from each client
+   */
+  socket.on('playerUpdate', (updateData: PlayerUpdate) => {
+    if (!currentRoomId) return;
+    
+    const room = gameRooms.get(currentRoomId);
+    if (!room) return;
+    
+    const player = room.get(socket.id);
+    if (!player) return;
+    
+    // Update player state with new data
+    player.head = updateData.head;
+    player.direction = updateData.direction;
+    player.speed = updateData.speed;
+    player.length = updateData.length;
+    player.isBoosting = updateData.isBoosting;
+    player.lastUpdate = Date.now();
+    
+    // Note: segments are updated separately for performance
+    // Full segment data is only sent when necessary (e.g., on growth)
+    
+    // Broadcast update to all OTHER players in the room
+    // We only send the essential data to reduce bandwidth
+    socket.to(currentRoomId).emit('playerUpdate', {
+      id: socket.id,
+      head: player.head,
+      direction: player.direction,
+      speed: player.speed,
+      length: player.length,
+      isBoosting: player.isBoosting
+    });
+  });
+  
+  /**
+   * Handle full player state updates (includes segments)
+   * Used less frequently when player grows or needs full sync
+   */
+  socket.on('playerStateUpdate', (stateData: Partial<PlayerState>) => {
+    if (!currentRoomId) return;
+    
+    const room = gameRooms.get(currentRoomId);
+    if (!room) return;
+    
+    const player = room.get(socket.id);
+    if (!player) return;
+    
+    // Update full player state
+    Object.assign(player, stateData, { lastUpdate: Date.now() });
+    
+    // Broadcast full state to other players
+    socket.to(currentRoomId).emit('playerStateUpdate', {
+      id: socket.id,
+      ...stateData
+    });
+  });
+
+  // ============================================================================
+  // MULTIPLAYER: KILL EVENT HANDLER
+  // ============================================================================
+  
+  /**
+   * Handle player kill events
+   * When a player kills another:
+   * 1. Transfer victim's money to killer
+   * 2. Increment killer's kill count
+   * 3. Remove victim from game
+   * 4. Broadcast kill event to all players
+   */
+  socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
+    if (!currentRoomId) return;
+    
+    const room = gameRooms.get(currentRoomId);
+    if (!room) return;
+    
+    const killer = room.get(socket.id);
+    const victim = room.get(victimId);
+    
+    if (!killer || !victim) {
+      console.log(`❌ Kill event error: killer or victim not found`);
+      return;
+    }
+    
+    // Transfer money from victim to killer
+    const moneyGained = victim.money;
+    killer.money += moneyGained;
+    killer.kills += 1;
+    
+    console.log(`💀 ${killer.username} killed ${victim.username} and gained $${moneyGained.toFixed(2)}`);
+    console.log(`💰 ${killer.username} now has $${killer.money.toFixed(2)} (${killer.kills} kills)`);
+    
+    // Remove victim from room
+    room.delete(victimId);
+    
+    // Broadcast kill event to all players in room
+    io.to(currentRoomId).emit('playerKilled', {
+      killerId: killer.id,
+      killerUsername: killer.username,
+      victimId: victim.id,
+      victimUsername: victim.username,
+      moneyGained: moneyGained,
+      newKillerMoney: killer.money,
+      newKillerKills: killer.kills,
+      timestamp: Date.now()
+    });
+    
+    // Also send playerLeft event so clients remove the victim
+    io.to(currentRoomId).emit('playerLeft', {
+      playerId: victimId,
+      timestamp: Date.now()
+    });
+  });
+
+  // Game-related event handlers (LEGACY - keeping for compatibility)
+  socket.on('playerUpdate_legacy', (data) => {
     // Get the room from the socket's query parameters
     const roomId = socket.handshake.query.room;
     const region = socket.handshake.query.region;
@@ -650,6 +992,36 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
 
+    // ============================================================================
+    // MULTIPLAYER: PLAYER DISCONNECT
+    // ============================================================================
+    
+    /**
+     * Remove player from game room and notify other players
+     */
+    if (currentRoomId) {
+      const room = gameRooms.get(currentRoomId);
+      if (room && room.has(socket.id)) {
+        const player = room.get(socket.id);
+        room.delete(socket.id);
+        
+        console.log(`🎮 Player ${player?.username} left room ${currentRoomId}`);
+        
+        // Broadcast player leave event to remaining players
+        socket.to(currentRoomId).emit('playerLeft', {
+          playerId: socket.id,
+          timestamp: Date.now()
+        });
+        
+        // Clean up empty rooms
+        if (room.size === 0) {
+          gameRooms.delete(currentRoomId);
+          console.log(`🧹 Cleaned up empty room ${currentRoomId}`);
+        }
+      }
+    }
+
+    // Clean up online users tracking
     for (const [username, sockets] of onlineUsers.entries()) {
       if (sockets.has(socket.id)) {
         sockets.delete(socket.id);
@@ -717,6 +1089,12 @@ app.use((req, res, next) => {
 
 // Health check
 app.get("/health", (_req, res) => {
+  // Calculate total players across all game rooms
+  let totalPlayers = 0;
+  for (const room of gameRooms.values()) {
+    totalPlayers += room.size;
+  }
+  
   res.status(200).json({
     status: "healthy",
     timestamp: new Date().toISOString(),
@@ -725,6 +1103,15 @@ app.get("/health", (_req, res) => {
     friendRequests: Array.from(friendRequests.keys()).reduce((acc, key) => acc + (friendRequests.get(key)?.length || 0), 0),
     userFriends: Array.from(userFriends.keys()).length,
     socketConnections: io.sockets.sockets.size,
+    // Multiplayer stats
+    multiplayer: {
+      activeRooms: gameRooms.size,
+      totalPlayersInGame: totalPlayers,
+      roomDetails: Array.from(gameRooms.entries()).map(([roomId, players]) => ({
+        roomId,
+        playerCount: players.size
+      }))
+    },
     uptime: process.uptime(),
     memory: process.memoryUsage(),
     version: process.env.npm_package_version || "1.0.0"
