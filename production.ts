@@ -286,23 +286,32 @@ io.on("connection", (socket) => {
   }
   
   let currentRoomId: string | null = null;
+  let isPlayerInGame = false; // Track if player is actually in game
   
-  if (roomId && region) {
-    const roomName = `${region}:${roomId}`;
+  // ============================================================================
+  // MULTIPLAYER: JOIN GAME EVENT (EXPLICIT)
+  // ============================================================================
+  /**
+   * Player explicitly joins the game (not automatic on connection!)
+   * This is called when player actually starts playing, not just connecting
+   */
+  socket.on('joinGame', ({ roomId: joinRoomId, region: joinRegion, username: joinUsername }) => {
+    if (isPlayerInGame) {
+      console.log(`⚠️ Player ${socket.id} already in game, ignoring duplicate join`);
+      return;
+    }
+    
+    const roomName = `${joinRegion}:${joinRoomId}`;
     currentRoomId = roomName;
+    
+    // Update username if provided
+    if (joinUsername && joinUsername !== 'undefined') {
+      username = joinUsername;
+    }
+    
     socket.join(roomName);
-    console.log(`🎮 User ${socket.id} (${username}) joined room ${roomName} (mode: ${mode})`);
+    console.log(`🎮 User ${socket.id} (${username}) EXPLICITLY joined game in room ${roomName} (mode: ${mode})`);
     
-    // ============================================================================
-    // MULTIPLAYER: NEW PLAYER JOINS
-    // ============================================================================
-    
-    /**
-     * Initialize new player in the game room
-     * - Assign spawn position and initial state
-     * - Send current game state to the new player
-     * - Broadcast new player to existing players
-     */
     // ============================================================================
     // ROOM CAPACITY CHECK - MAX 80 PLAYERS PER ROOM
     // ============================================================================
@@ -323,24 +332,25 @@ io.on("connection", (socket) => {
     const spawnPos = generateSpawnPosition();
     const newPlayer: PlayerState = {
       id: socket.id,
-      username: username, // Already validated above
+      username: username,
       head: spawnPos,
-      direction: Math.random() * Math.PI * 2, // Random initial direction
+      direction: Math.random() * Math.PI * 2,
       speed: 2.5,
-      length: 10, // Starting length
+      length: 10,
       color: generatePlayerColor(),
-      segments: [spawnPos], // Start with just head position
+      segments: [spawnPos],
       isBoosting: false,
       score: 0,
-      money: 1.00, // Everyone starts with $1.00
-      kills: 0,    // No kills yet
+      money: 1.00,
+      kills: 0,
       lastUpdate: Date.now()
     };
     
     // Add player to room
     room.set(socket.id, newPlayer);
+    isPlayerInGame = true;
     
-    // Send current game state to the new player (so they see existing players)
+    // Send current game state to the new player
     const gameState: GameStateSnapshot = {
       players: Object.fromEntries(room),
       timestamp: Date.now()
@@ -354,7 +364,7 @@ io.on("connection", (socket) => {
       timestamp: Date.now()
     });
     console.log(`📢 Broadcasted new player ${username} to room ${roomName}`);
-  }
+  });
 
   // Listen for user joining
   socket.on("join", async (username: string) => {
@@ -885,9 +895,11 @@ io.on("connection", (socket) => {
    * - Broadcast to all other players in the room
    * 
    * This is called frequently (e.g., every 50ms) from each client
+   * IMPORTANT: Only processes updates for players who are actually in game
    */
   socket.on('playerUpdate', (updateData: PlayerUpdate) => {
-    if (!currentRoomId) return;
+    // Ignore updates from players not in game
+    if (!isPlayerInGame || !currentRoomId) return;
     
     const room = gameRooms.get(currentRoomId);
     if (!room) return;
@@ -921,9 +933,11 @@ io.on("connection", (socket) => {
   /**
    * Handle full player state updates (includes segments)
    * Used less frequently when player grows or needs full sync
+   * IMPORTANT: Only processes updates for players who are actually in game
    */
   socket.on('playerStateUpdate', (stateData: Partial<PlayerState>) => {
-    if (!currentRoomId) return;
+    // Ignore updates from players not in game
+    if (!isPlayerInGame || !currentRoomId) return;
     
     const room = gameRooms.get(currentRoomId);
     if (!room) return;
@@ -952,9 +966,11 @@ io.on("connection", (socket) => {
    * 2. Increment killer's kill count
    * 3. Remove victim from game
    * 4. Broadcast kill event to all players
+   * IMPORTANT: Only processes kills for players who are actually in game
    */
   socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
-    if (!currentRoomId) return;
+    // Ignore kills from players not in game
+    if (!isPlayerInGame || !currentRoomId) return;
     
     const room = gameRooms.get(currentRoomId);
     if (!room) return;
