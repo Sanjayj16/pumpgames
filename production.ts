@@ -3,7 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { registerRoutes } from "./simple-routes";
 import { storage } from "./storage";
-import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "./multiplayer-types";
+import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "../shared/multiplayer-types";
 
 const app = express();
 const httpServer = createServer(app);
@@ -105,6 +105,55 @@ function generatePlayerColor(): string {
   ];
   return colors[Math.floor(Math.random() * colors.length)];
 }
+
+// ============================================================================
+// AUTOMATIC STALE PLAYER CLEANUP
+// ============================================================================
+/**
+ * Clean up players who haven't sent updates in a while (disconnected but stuck)
+ * Runs every 30 seconds
+ */
+setInterval(() => {
+  const now = Date.now();
+  const staleThreshold = 60000; // 60 seconds
+  let totalCleaned = 0;
+  
+  for (const [roomId, room] of gameRooms.entries()) {
+    const playersToRemove: string[] = [];
+    
+    for (const [playerId, player] of room.entries()) {
+      const timeSinceUpdate = now - player.lastUpdate;
+      if (timeSinceUpdate > staleThreshold) {
+        playersToRemove.push(playerId);
+      }
+    }
+    
+    // Remove stale players
+    for (const playerId of playersToRemove) {
+      const player = room.get(playerId);
+      room.delete(playerId);
+      totalCleaned++;
+      
+      console.log(`🧹 Auto-cleaned stale player ${player?.username} from ${roomId} (inactive for ${Math.floor((now - player!.lastUpdate) / 1000)}s)`);
+      
+      // Broadcast removal
+      io.to(roomId).emit('playerLeft', {
+        playerId: playerId,
+        timestamp: now
+      });
+    }
+    
+    // Clean up empty rooms
+    if (room.size === 0) {
+      gameRooms.delete(roomId);
+      console.log(`🧹 Auto-cleaned empty room ${roomId}`);
+    }
+  }
+  
+  if (totalCleaned > 0) {
+    console.log(`✨ Auto-cleanup complete: Removed ${totalCleaned} stale players`);
+  }
+}, 30000); // Run every 30 seconds
 
 // ============================================================================
 // TODO: SERVER-SIDE FOOD MANAGEMENT
@@ -993,19 +1042,24 @@ io.on("connection", (socket) => {
     console.log("User disconnected:", socket.id);
 
     // ============================================================================
-    // MULTIPLAYER: PLAYER DISCONNECT
+    // MULTIPLAYER: PLAYER DISCONNECT - ROBUST CLEANUP
     // ============================================================================
     
     /**
      * Remove player from game room and notify other players
+     * IMPORTANT: Search ALL rooms to ensure cleanup (fixes stuck players bug)
      */
+    let playerRemoved = false;
+    
+    // Try current room first (fast path)
     if (currentRoomId) {
       const room = gameRooms.get(currentRoomId);
       if (room && room.has(socket.id)) {
         const player = room.get(socket.id);
         room.delete(socket.id);
+        playerRemoved = true;
         
-        console.log(`🎮 Player ${player?.username} left room ${currentRoomId}`);
+        console.log(`🎮 Player ${player?.username} left room ${currentRoomId} (${room.size} remaining)`);
         
         // Broadcast player leave event to remaining players
         socket.to(currentRoomId).emit('playerLeft', {
@@ -1017,6 +1071,34 @@ io.on("connection", (socket) => {
         if (room.size === 0) {
           gameRooms.delete(currentRoomId);
           console.log(`🧹 Cleaned up empty room ${currentRoomId}`);
+        }
+      }
+    }
+    
+    // Fallback: Search all rooms (in case currentRoomId wasn't set or is stale)
+    if (!playerRemoved) {
+      console.log(`⚠️ currentRoomId not set, searching all rooms for ${socket.id}`);
+      for (const [roomId, room] of gameRooms.entries()) {
+        if (room.has(socket.id)) {
+          const player = room.get(socket.id);
+          room.delete(socket.id);
+          playerRemoved = true;
+          
+          console.log(`🔍 Found and removed ${player?.username} from room ${roomId} (${room.size} remaining)`);
+          
+          // Broadcast player leave event
+          io.to(roomId).emit('playerLeft', {
+            playerId: socket.id,
+            timestamp: Date.now()
+          });
+          
+          // Clean up empty rooms
+          if (room.size === 0) {
+            gameRooms.delete(roomId);
+            console.log(`🧹 Cleaned up empty room ${roomId}`);
+          }
+          
+          break; // Player can only be in one room
         }
       }
     }
@@ -1116,6 +1198,57 @@ app.get("/health", (_req, res) => {
     memory: process.memoryUsage(),
     version: process.env.npm_package_version || "1.0.0"
   });
+});
+
+// Emergency cleanup endpoint for stuck players
+app.post("/api/cleanup-stale-players", (_req, res) => {
+  const now = Date.now();
+  const staleThreshold = 60000; // 60 seconds
+  let totalCleaned = 0;
+  
+  console.log('🚨 Manual cleanup triggered!');
+  
+  for (const [roomId, room] of gameRooms.entries()) {
+    const playersToRemove: string[] = [];
+    
+    for (const [playerId, player] of room.entries()) {
+      const timeSinceUpdate = now - player.lastUpdate;
+      if (timeSinceUpdate > staleThreshold) {
+        playersToRemove.push(playerId);
+      }
+    }
+    
+    // Remove stale players
+    for (const playerId of playersToRemove) {
+      const player = room.get(playerId);
+      room.delete(playerId);
+      totalCleaned++;
+      
+      console.log(`🧹 Manual cleanup: Removed ${player?.username} from ${roomId}`);
+      
+      // Broadcast removal
+      io.to(roomId).emit('playerLeft', {
+        playerId: playerId,
+        timestamp: now
+      });
+    }
+    
+    // Clean up empty rooms
+    if (room.size === 0) {
+      gameRooms.delete(roomId);
+      console.log(`🧹 Manual cleanup: Removed empty room ${roomId}`);
+    }
+  }
+  
+  res.status(200).json({
+    success: true,
+    message: `Cleaned up ${totalCleaned} stale players`,
+    totalCleaned,
+    remainingPlayers: Array.from(gameRooms.values()).reduce((acc, room) => acc + room.size, 0),
+    remainingRooms: gameRooms.size
+  });
+  
+  console.log(`✨ Manual cleanup complete: Removed ${totalCleaned} stale players`);
 });
 
 // WebSocket health check
