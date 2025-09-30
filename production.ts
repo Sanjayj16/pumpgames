@@ -3,7 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { registerRoutes } from "./simple-routes";
 import { storage } from "./storage";
-import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "../shared/multiplayer-types";
+import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "./multiplayer-types";
 
 const app = express();
 const httpServer = createServer(app);
@@ -350,13 +350,16 @@ io.on("connection", (socket) => {
     room.set(socket.id, newPlayer);
     isPlayerInGame = true;
     
-    // Send current game state to the new player
+    // Send current game state to the new player (EXCLUDING themselves)
+    const otherPlayers = new Map(room);
+    otherPlayers.delete(socket.id); // Remove self from the list
+    
     const gameState: GameStateSnapshot = {
-      players: Object.fromEntries(room),
+      players: Object.fromEntries(otherPlayers),
       timestamp: Date.now()
     };
     socket.emit('gameState', gameState);
-    console.log(`📤 Sent game state with ${room.size - 1} existing players to ${username}`);
+    console.log(`📤 Sent game state with ${otherPlayers.size} existing players to ${username} (excluding self)`);
     
     // Broadcast new player to all OTHER players in the room
     socket.to(roomName).emit('playerJoined', {
@@ -1121,8 +1124,8 @@ io.on("connection", (socket) => {
     }
     
     // Fallback: Search all rooms (in case currentRoomId wasn't set or is stale)
+    // Note: This is NORMAL for users who just connected but didn't join a game
     if (!playerRemoved) {
-      console.log(`⚠️ currentRoomId not set, searching all rooms for ${socket.id}`);
       for (const [roomId, room] of gameRooms.entries()) {
         if (room.has(socket.id)) {
           const player = room.get(socket.id);
