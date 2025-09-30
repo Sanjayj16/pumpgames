@@ -3,7 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { registerRoutes } from "./simple-routes";
 import { storage } from "./storage";
-import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "./multiplayer-types";
+import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "../shared/multiplayer-types";
 
 const app = express();
 const httpServer = createServer(app);
