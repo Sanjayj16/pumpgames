@@ -973,16 +973,27 @@ io.on("connection", (socket) => {
    */
   socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
     // Ignore kills from players not in game
-    if (!isPlayerInGame || !currentRoomId) return;
+    if (!isPlayerInGame || !currentRoomId) {
+      console.log(`⚠️ Kill event ignored: player not in game (${socket.id})`);
+      return;
+    }
     
     const room = gameRooms.get(currentRoomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`⚠️ Kill event ignored: room not found (${currentRoomId})`);
+      return;
+    }
     
     const killer = room.get(socket.id);
     const victim = room.get(victimId);
     
-    if (!killer || !victim) {
-      console.log(`❌ Kill event error: killer or victim not found`);
+    if (!killer) {
+      console.log(`❌ Kill event error: killer not found (${socket.id})`);
+      return;
+    }
+    
+    if (!victim) {
+      console.log(`❌ Kill event error: victim not found (${victimId})`);
       return;
     }
 
@@ -990,6 +1001,13 @@ io.on("connection", (socket) => {
     // Check if victim is already dead (being processed by another kill event)
     if (!room.has(victimId)) {
       console.log(`⚠️ Victim ${victimId} already dead, ignoring duplicate kill event`);
+      return;
+    }
+
+    // ===== ADDITIONAL VALIDATION =====
+    // Prevent self-kill
+    if (killer.id === victim.id) {
+      console.log(`⚠️ Self-kill attempt blocked (${killer.id})`);
       return;
     }
     
