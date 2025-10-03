@@ -971,7 +971,7 @@ io.on("connection", (socket) => {
    * 4. Broadcast kill event to all players
    * IMPORTANT: Only processes kills for players who are actually in game
    */
-  socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
+  socket.on('playerKilled', ({ victimId, victimMoney }: { victimId: string; victimMoney?: number }) => {
     // Ignore kills from players not in game
     if (!isPlayerInGame || !currentRoomId) {
       console.log(`⚠️ Kill event ignored: player not in game (${socket.id})`);
@@ -994,6 +994,43 @@ io.on("connection", (socket) => {
     
     if (!victim) {
       console.log(`❌ Kill event error: victim not found (${victimId})`);
+      
+      // ===== HANDLE DISCONNECTED VICTIM =====
+      // If victim has disconnected, still process the kill with client-provided money
+      if (victimMoney && victimMoney > 0) {
+        console.log(`🔄 Processing kill with disconnected victim ${victimId} (money: $${victimMoney.toFixed(2)})`);
+        
+        // Transfer money to killer
+        const moneyGained = victimMoney;
+        killer.money += moneyGained;
+        killer.kills += 1;
+        
+        console.log(`💀 ${killer.username} killed disconnected player and gained $${moneyGained.toFixed(2)}`);
+        console.log(`💰 ${killer.username} now has $${killer.money.toFixed(2)} (${killer.kills} kills)`);
+        
+        // Send balance update to killer
+        io.to(killer.id).emit('balanceUpdate', {
+          playerId: killer.id,
+          newBalance: killer.money,
+          moneyGained: moneyGained,
+          isKiller: true
+        });
+        
+        // Broadcast kill event to all players in room
+        io.to(currentRoomId).emit('playerKilled', {
+          killerId: killer.id,
+          killerUsername: killer.username,
+          victimId: victimId,
+          victimUsername: 'Disconnected Player',
+          moneyGained: moneyGained,
+          newKillerMoney: killer.money,
+          newKillerKills: killer.kills,
+          timestamp: Date.now()
+        });
+        
+        return;
+      }
+      
       return;
     }
 
