@@ -113,6 +113,28 @@ export interface KillEvent {
 }
 
 /**
+ * Balance Update Event - Sent when a player's balance changes
+ */
+export interface BalanceUpdateEvent {
+  playerId: string;
+  newBalance: number;
+  moneyGained: number;
+  source: 'kill' | 'respawn' | 'food' | 'crate';
+  timestamp: number;
+}
+
+/**
+ * Player Respawn Event - Sent when a player respawns
+ */
+export interface PlayerRespawnEvent {
+  playerId: string;
+  username: string;
+  newPosition: Position;
+  newBalance: number;
+  timestamp: number;
+}
+
+/**
  * Leaderboard Entry (for real-time leaderboard)
  * TODO: Implement real-time leaderboard updates
  */
