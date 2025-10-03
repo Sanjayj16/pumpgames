@@ -3,7 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { registerRoutes } from "./simple-routes";
 import { storage } from "./storage";
-import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "./multiplayer-types";
+import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "../shared/multiplayer-types";
 
 const app = express();
 const httpServer = createServer(app);
@@ -30,13 +30,6 @@ const io = new Server(httpServer, {
 
 // Map to track online users allowing multiple sockets per username
 const onlineUsers = new Map<string, Set<string>>();
-
-// Map to track processed kills to prevent duplicate processing
-const processedKills = new Map<string, {
-  killerId: string;
-  victimId: string;
-  timestamp: number;
-}>();
 // Store pending friend requests
 const friendRequests = new Map<string, Array<{ id: string; from: string; timestamp: string }>>();
 // Store user's friends list
@@ -978,122 +971,33 @@ io.on("connection", (socket) => {
    * 4. Broadcast kill event to all players
    * IMPORTANT: Only processes kills for players who are actually in game
    */
-  socket.on('playerKilled', ({ victimId, victimMoney }: { victimId: string; victimMoney?: number }) => {
+  socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
     // Ignore kills from players not in game
     if (!isPlayerInGame || !currentRoomId) {
-      console.log(`⚠️ Kill event ignored: player not in game (${socket.id})`);
+      console.log(`⚠️ Ignoring kill event: player not in game (isPlayerInGame: ${isPlayerInGame}, currentRoomId: ${currentRoomId})`);
       return;
     }
     
     const room = gameRooms.get(currentRoomId);
     if (!room) {
-      console.log(`⚠️ Kill event ignored: room not found (${currentRoomId})`);
+      console.log(`⚠️ Ignoring kill event: room ${currentRoomId} not found`);
       return;
     }
     
     const killer = room.get(socket.id);
     const victim = room.get(victimId);
     
-    if (!killer) {
-      console.log(`❌ Kill event error: killer not found (${socket.id})`);
-      return;
-    }
-    
-    if (!victim) {
-      console.log(`❌ Kill event error: victim not found (${victimId})`);
-      
-      // ===== HANDLE DISCONNECTED VICTIM =====
-      // Check if this exact kill has already been processed
-      const killKey = `${killer.id}-${victimId}`;
-      if (processedKills.has(killKey)) {
-        console.log(`⚠️ Disconnected victim kill already processed: ${killer.id} -> ${victimId}, ignoring duplicate`);
-        return;
-      }
-      
-      // Always process kill for disconnected victims (client detected the kill)
-      const moneyGained = victimMoney && victimMoney > 0 ? victimMoney : 1.00; // Default to $1.00
-      
-      console.log(`🔄 Processing kill with disconnected victim ${victimId} (money: $${moneyGained.toFixed(2)})`);
-      
-      // Mark this kill as processed
-      processedKills.set(killKey, {
-        killerId: killer.id,
-        victimId: victimId,
-        timestamp: Date.now()
-      });
-      
-      // Clean up old processed kills (older than 30 seconds)
-      const now = Date.now();
-      for (const [key, data] of processedKills.entries()) {
-        if (now - data.timestamp > 30000) {
-          processedKills.delete(key);
-        }
-      }
-      
-      // Transfer money to killer
-      killer.money += moneyGained;
-      killer.kills += 1;
-      
-      console.log(`💀 ${killer.username} killed disconnected player and gained $${moneyGained.toFixed(2)}`);
-      console.log(`💰 ${killer.username} now has $${killer.money.toFixed(2)} (${killer.kills} kills)`);
-      
-      // Send balance update to killer
-      io.to(killer.id).emit('balanceUpdate', {
-        playerId: killer.id,
-        newBalance: killer.money,
-        moneyGained: moneyGained,
-        isKiller: true
-      });
-      
-      // Broadcast kill event to all players in room
-      io.to(currentRoomId).emit('playerKilled', {
-        killerId: killer.id,
-        killerUsername: killer.username,
-        victimId: victimId,
-        victimUsername: 'Disconnected Player',
-        moneyGained: moneyGained,
-        newKillerMoney: killer.money,
-        newKillerKills: killer.kills,
-        timestamp: Date.now()
-      });
-      
+    if (!killer || !victim) {
+      console.log(`❌ Kill event error: killer (${socket.id}) or victim (${victimId}) not found in room ${currentRoomId}`);
+      console.log(`   Room size: ${room.size}, Room players: ${Array.from(room.keys()).join(', ')}`);
       return;
     }
 
     // ===== PREVENT DUPLICATION ON SIMULTANEOUS KILLS =====
-    // Check if this exact kill has already been processed
-    const killKey = `${killer.id}-${victimId}`;
-    if (processedKills.has(killKey)) {
-      console.log(`⚠️ Kill already processed: ${killer.id} -> ${victimId}, ignoring duplicate`);
-      return;
-    }
-
     // Check if victim is already dead (being processed by another kill event)
     if (!room.has(victimId)) {
       console.log(`⚠️ Victim ${victimId} already dead, ignoring duplicate kill event`);
       return;
-    }
-
-    // ===== ADDITIONAL VALIDATION =====
-    // Prevent self-kill
-    if (killer.id === victim.id) {
-      console.log(`⚠️ Self-kill attempt blocked (${killer.id})`);
-      return;
-    }
-    
-    // Mark this kill as processed
-    processedKills.set(killKey, {
-      killerId: killer.id,
-      victimId: victimId,
-      timestamp: Date.now()
-    });
-    
-    // Clean up old processed kills (older than 30 seconds)
-    const now = Date.now();
-    for (const [key, data] of processedKills.entries()) {
-      if (now - data.timestamp > 30000) {
-        processedKills.delete(key);
-      }
     }
     
     // ===== DYNAMIC MONEY TRANSFER SYSTEM =====
