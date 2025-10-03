@@ -366,7 +366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             lastUpdate: Date.now(),
             roomId: room.id
           };
-          // Reduce server logging frequency for performance at 30 FPS
+          // Reduce server logging frequency for performance at 60 FPS
           if (Math.random() < 0.01) { // Only log 1% of updates for better performance
             console.log(`Room ${room.region}/${room.id}: Server received update from ${playerId}: ${limitedSegments.length} segments (was ${segments.length}), mass: ${limitedMass.toFixed(1)} (was ${data.totalMass?.toFixed(1)}), radius: ${data.segmentRadius?.toFixed(1) || 'unknown'}`);
           }
