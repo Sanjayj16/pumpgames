@@ -30,6 +30,7 @@ export interface PlayerState {
   score: number;                 // Player's current score
   money: number;                 // Player's money/bounty (starts at $1, increases with kills)
   kills: number;                 // Number of kills
+  foodsEaten?: number;           // Number of foods eaten (for segment calculation)
   lastUpdate: number;            // Timestamp of last update
 }
 
