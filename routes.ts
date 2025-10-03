@@ -376,12 +376,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (currentPlayerHead && data.segmentRadius) {
             let collisionDetected = false;
             
-            // Check collision with all other players in same room
+            // Check collision with all other players in same room - BIDIRECTIONAL CHECK
             for (const [otherPlayerId, otherPlayer] of Array.from(room.players)) {
               if (otherPlayerId === playerId) continue; // Skip self
               if (!otherPlayer.segments || otherPlayer.segments.length === 0) continue;
               
-              // Check collision with all segments of other player
+              const otherPlayerHead = otherPlayer.segments[0];
+              if (!otherPlayerHead) continue;
+              
+              // ===== CHECK 1: Did current player crash into other player? (current player dies) =====
               for (const segment of otherPlayer.segments) {
                 const dist = Math.sqrt(
                   (currentPlayerHead.x - segment.x) ** 2 + 
@@ -390,7 +393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const collisionRadius = data.segmentRadius + (otherPlayer.segmentRadius || 10);
                 
                 if (dist < collisionRadius) {
-                  console.log(`💀 SERVER Room ${room.region}/${room.id}: Player ${playerId} crashed into ${otherPlayerId}!`);
+                  console.log(`💀 SERVER Room ${room.region}/${room.id}: Player ${playerId} crashed into ${otherPlayerId}! (Current player dies)`);
                   collisionDetected = true;
                   
                   // Get crashed player data for money crate calculation
@@ -490,6 +493,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   break;
                 }
               }
+              
+              // ===== CHECK 2: Did other player crash into current player? (other player dies) =====
+              if (!collisionDetected) {
+                // Check if other player's head hits current player's body
+                for (const segment of data.segments || []) {
+                  const dist = Math.sqrt(
+                    (otherPlayerHead.x - segment.x) ** 2 + 
+                    (otherPlayerHead.y - segment.y) ** 2
+                  );
+                  const collisionRadius = (otherPlayer.segmentRadius || 10) + data.segmentRadius;
+                  
+                  if (dist < collisionRadius) {
+                    console.log(`💀 SERVER Room ${room.region}/${room.id}: Player ${otherPlayerId} crashed into ${playerId}! (Other player dies)`);
+                    
+                    // Other player dies - create money crates from their death
+                    const crashedPlayerMoney = otherPlayer.money || 1.0;
+                    const crashedPlayerMass = otherPlayer.totalMass || 6;
+                    
+                    // Create money crates (1 crate per mass unit) at other player's death location
+                    const numCrates = Math.floor(crashedPlayerMass) || 1;
+                    const moneyPerCrate = crashedPlayerMoney / numCrates;
+                    
+                    console.log(`💰 SERVER: Creating ${numCrates} money crates worth $${moneyPerCrate.toFixed(2)} each from ${otherPlayerId}'s death`);
+                    
+                    // Drop money crates in a spread pattern around other player's death location
+                    for (let i = 0; i < numCrates; i++) {
+                      const angle = (i / numCrates) * Math.PI * 2;
+                      const spreadRadius = 20 + (i * 8);
+                      const crateX = otherPlayerHead.x + Math.cos(angle) * spreadRadius;
+                      const crateY = otherPlayerHead.y + Math.sin(angle) * spreadRadius;
+                      
+                      const moneyCrate = {
+                        id: `money_crate_${Date.now()}_${i}`,
+                        x: crateX,
+                        y: crateY,
+                        radius: 6,
+                        mass: 0,
+                        color: '#ffd700',
+                        vx: 0,
+                        vy: 0,
+                        wobbleOffset: Math.random() * Math.PI * 2,
+                        isMoneyCrate: true,
+                        moneyValue: parseFloat(moneyPerCrate.toFixed(2))
+                      };
+                      
+                      // Broadcast money crate to all players in the room
+                      const crateMessage = JSON.stringify({
+                        type: 'moneyCrate',
+                        crate: moneyCrate
+                      });
+                      
+                      room.players.forEach((player, id) => {
+                        wss.clients.forEach(client => {
+                          if ((client as any).playerId === id && client.readyState === WebSocket.OPEN) {
+                            client.send(crateMessage);
+                          }
+                        });
+                      });
+                    }
+                    
+                    // Remove crashed other player from room
+                    room.players.delete(otherPlayerId);
+                    playerToRoom.delete(otherPlayerId);
+                    
+                    // Send death notification to crashed other player
+                    wss.clients.forEach(client => {
+                      if ((client as any).playerId === otherPlayerId && client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({
+                          type: 'death',
+                          reason: 'collision',
+                          crashedInto: playerId
+                        }));
+                      }
+                    });
+                    
+                    console.log(`💀 Player ${otherPlayerId} removed from room ${room.region}/${room.id}`);
+                    break;
+                  }
+                }
+              }
+              
               if (collisionDetected) break;
             }
             
@@ -625,7 +709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Broadcast game state every 33ms for smooth 30 FPS multiplayer
+  // Broadcast game state every 16ms for smooth 60 FPS multiplayer
   setInterval(() => {
     if (wss.clients.size > 0) {
       // Broadcast to each room separately
@@ -667,7 +751,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
     }
-  }, 33); // Optimized 30 FPS server broadcasts for smooth performance
+  }, 16); // Optimized 60 FPS server broadcasts for ultra-smooth performance
 
   return httpServer;
 }
