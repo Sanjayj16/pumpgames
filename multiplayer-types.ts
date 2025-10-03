@@ -114,6 +114,14 @@ export interface KillEvent {
 }
 
 /**
+ * Kill Request - Sent from client to server when a kill is detected
+ */
+export interface KillRequest {
+  victimId: string;
+  victimMoney?: number; // Money amount the victim had (for validation)
+}
+
+/**
  * Leaderboard Entry (for real-time leaderboard)
  * TODO: Implement real-time leaderboard updates
  */
