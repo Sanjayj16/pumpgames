@@ -1024,6 +1024,7 @@ io.on("connection", (socket) => {
         playerId: killer.id,
         newBalance: killer.money,
         moneyGained: moneyGained,
+        newKillerKills: killer.kills,
         isKiller: true
       });
       console.log(`💰 Sent balance update to killer ${killer.username}: $${killer.money.toFixed(2)}`);
