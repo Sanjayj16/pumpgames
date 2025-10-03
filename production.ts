@@ -343,7 +343,6 @@ io.on("connection", (socket) => {
       score: 0,
       money: 1.00,
       kills: 0,
-      foodsEaten: 0,
       lastUpdate: Date.now()
     };
     
@@ -964,14 +963,13 @@ io.on("connection", (socket) => {
   // ============================================================================
   
   /**
-   * Handle player kill events - DYNAMIC MONEY REWARD SYSTEM
-   * When a REAL PLAYER kills another REAL PLAYER:
+   * Handle player kill events
+   * When a player kills another:
    * 1. Transfer victim's money to killer
    * 2. Increment killer's kill count
    * 3. Remove victim from game
    * 4. Broadcast kill event to all players
-   * 5. Send balanceUpdate events for real-time UI updates
-   * IMPORTANT: Only processes kills for REAL PLAYERS (excludes bots)
+   * IMPORTANT: Only processes kills for players who are actually in game
    */
   socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
     // Ignore kills from players not in game
@@ -987,78 +985,45 @@ io.on("connection", (socket) => {
       console.log(`❌ Kill event error: killer or victim not found`);
       return;
     }
-    
-    // ===== KILL DETECTION: Only real players (exclude bots) =====
-    // Check if both killer and victim are real players (not bots)
-    // Bots typically have usernames starting with "Bot" or similar patterns
-    const isKillerBot = killer.username.toLowerCase().includes('bot') || 
-                       killer.username.startsWith('Bot') ||
-                       killer.id.startsWith('bot_');
-    const isVictimBot = victim.username.toLowerCase().includes('bot') || 
-                       victim.username.startsWith('Bot') ||
-                       victim.id.startsWith('bot_');
-    
-    // Only process money transfer for REAL PLAYER vs REAL PLAYER kills
-    if (isKillerBot || isVictimBot) {
-      console.log(`🤖 Bot kill detected: ${killer.username} (bot: ${isKillerBot}) killed ${victim.username} (bot: ${isVictimBot}) - No money transfer`);
-      
-      // Still remove victim and broadcast kill, but no money transfer
-      room.delete(victimId);
-      
-      io.to(currentRoomId).emit('playerKilled', {
-        killerId: killer.id,
-        killerUsername: killer.username,
-        victimId: victim.id,
-        victimUsername: victim.username,
-        moneyGained: 0, // No money gained for bot kills
-        newKillerMoney: killer.money, // No change
-        newKillerKills: killer.kills,
-        timestamp: Date.now(),
-        isBotKill: true
-      });
-      
-      io.to(currentRoomId).emit('playerLeft', {
-        playerId: victimId,
-        timestamp: Date.now()
-      });
+
+    // ===== PREVENT DUPLICATION ON SIMULTANEOUS KILLS =====
+    // Check if victim is already dead (being processed by another kill event)
+    if (!room.has(victimId)) {
+      console.log(`⚠️ Victim ${victimId} already dead, ignoring duplicate kill event`);
       return;
     }
     
-    // ===== BALANCE UPDATE LOGIC: Real player kills real player =====
+    // ===== DYNAMIC MONEY TRANSFER SYSTEM =====
+    // Only real players can transfer money (bots are excluded from money system)
+    // Transfer ALL of victim's money to killer
     const moneyGained = victim.money;
-    const previousKillerMoney = killer.money;
     killer.money += moneyGained;
     killer.kills += 1;
     
-    console.log(`💀 REAL PLAYER KILL: ${killer.username} killed ${victim.username} and gained $${moneyGained.toFixed(2)}`);
-    console.log(`💰 ${killer.username} balance: $${previousKillerMoney.toFixed(2)} → $${killer.money.toFixed(2)} (${killer.kills} kills)`);
+    console.log(`💀 ${killer.username} killed ${victim.username} and gained $${moneyGained.toFixed(2)}`);
+    console.log(`💰 ${killer.username} now has $${killer.money.toFixed(2)} (${killer.kills} kills)`);
     
     // Remove victim from room
     room.delete(victimId);
     
-    // ===== SOCKET EVENT EMISSION: Balance updates =====
-    // Send balanceUpdate to killer with their new balance
-    socket.emit('balanceUpdate', {
+    // ===== BROADCAST BALANCE UPDATES TO ALL PLAYERS =====
+    // Send balance update to killer (their new balance)
+    io.to(killer.id).emit('balanceUpdate', {
       playerId: killer.id,
       newBalance: killer.money,
       moneyGained: moneyGained,
-      reason: 'kill',
-      victimUsername: victim.username,
-      timestamp: Date.now()
+      isKiller: true
     });
     
-    // Send balanceUpdate to all other players for leaderboard updates
-    socket.to(currentRoomId).emit('balanceUpdate', {
-      playerId: killer.id,
-      newBalance: killer.money,
-      moneyGained: moneyGained,
-      reason: 'kill',
-      killerUsername: killer.username,
-      victimUsername: victim.username,
-      timestamp: Date.now()
+    // Send balance update to victim (reset to default $1.00)
+    io.to(victim.id).emit('balanceUpdate', {
+      playerId: victim.id,
+      newBalance: 1.00, // Reset to default balance
+      moneyGained: 0,
+      isKiller: false
     });
     
-    // Broadcast kill event to all players in room
+    // Broadcast kill event to all players in room (for UI notifications)
     io.to(currentRoomId).emit('playerKilled', {
       killerId: killer.id,
       killerUsername: killer.username,
@@ -1067,8 +1032,7 @@ io.on("connection", (socket) => {
       moneyGained: moneyGained,
       newKillerMoney: killer.money,
       newKillerKills: killer.kills,
-      timestamp: Date.now(),
-      isBotKill: false
+      timestamp: Date.now()
     });
     
     // Also send playerLeft event so clients remove the victim
@@ -1076,144 +1040,7 @@ io.on("connection", (socket) => {
       playerId: victimId,
       timestamp: Date.now()
     });
-    
-    // Trigger immediate leaderboard update after money transfer
-    broadcastLeaderboardUpdate(currentRoomId);
   });
-
-  // ============================================================================
-  // MULTIPLAYER: PLAYER RESPAWN HANDLER
-  // ============================================================================
-  
-  /**
-   * Handle player respawn events
-   * When a player respawns:
-   * 1. Reset their balance to default ($1.00)
-   * 2. Reset their kills to 0
-   * 3. Generate new spawn position
-   * 4. Broadcast respawn event with new balance
-   * IMPORTANT: Only real players get balance reset (bots maintain their values)
-   */
-  socket.on('playerRespawn', () => {
-    // Ignore respawns from players not in game
-    if (!isPlayerInGame || !currentRoomId) return;
-    
-    const room = gameRooms.get(currentRoomId);
-    if (!room) return;
-    
-    const player = room.get(socket.id);
-    if (!player) {
-      console.log(`❌ Respawn event error: player not found`);
-      return;
-    }
-    
-    // ===== RESPAWN LOGIC: Reset balance for real players =====
-    const isPlayerBot = player.username.toLowerCase().includes('bot') || 
-                       player.username.startsWith('Bot') ||
-                       player.id.startsWith('bot_');
-    
-    const previousBalance = player.money;
-    const previousKills = player.kills;
-    
-    if (!isPlayerBot) {
-      // Real player: reset balance to default
-      player.money = 1.00; // Default starting balance
-      player.kills = 0;    // Reset kill count
-      
-      console.log(`🔄 RESPAWN: ${player.username} respawned - balance reset $${previousBalance.toFixed(2)} → $${player.money.toFixed(2)}`);
-      
-      // Send balanceUpdate to the respawned player
-      socket.emit('balanceUpdate', {
-        playerId: player.id,
-        newBalance: player.money,
-        moneyGained: 0,
-        reason: 'respawn',
-        timestamp: Date.now()
-      });
-      
-      // Send balanceUpdate to all other players for leaderboard updates
-      socket.to(currentRoomId).emit('balanceUpdate', {
-        playerId: player.id,
-        newBalance: player.money,
-        moneyGained: 0,
-        reason: 'respawn',
-        playerUsername: player.username,
-        timestamp: Date.now()
-      });
-    } else {
-      console.log(`🤖 Bot respawn: ${player.username} - no balance reset`);
-    }
-    
-    // Generate new spawn position
-    const newSpawnPos = generateSpawnPosition();
-    player.head = newSpawnPos;
-    player.segments = [newSpawnPos];
-    player.direction = Math.random() * Math.PI * 2;
-    player.length = 10; // Reset to default length
-    player.score = 0;   // Reset score
-    player.foodsEaten = 0;
-    player.lastUpdate = Date.now();
-    
-    // Broadcast respawn event to all players in room
-    io.to(currentRoomId).emit('playerRespawned', {
-      playerId: player.id,
-      username: player.username,
-      newPosition: newSpawnPos,
-      newBalance: player.money,
-      isBot: isPlayerBot,
-      timestamp: Date.now()
-    });
-    
-    // Trigger leaderboard update after respawn
-    broadcastLeaderboardUpdate(currentRoomId);
-  });
-
-  // ============================================================================
-  // MULTIPLAYER: REAL-TIME LEADERBOARD SYSTEM
-  // ============================================================================
-  
-  /**
-   * Generate leaderboard data for a room
-   * Shows top players by balance (money)
-   */
-  function getLeaderboard(roomId: string) {
-    const room = gameRooms.get(roomId);
-    if (!room) return [];
-    
-    return Array.from(room.values())
-      .filter(player => !player.username.toLowerCase().includes('bot') && 
-                       !player.username.startsWith('Bot') && 
-                       !player.id.startsWith('bot_')) // Only real players
-      .map(player => ({
-        username: player.username,
-        balance: player.money,
-        kills: player.kills,
-        length: player.length,
-        score: player.score
-      }))
-      .sort((a, b) => b.balance - a.balance) // Sort by balance (highest first)
-      .slice(0, 10); // Top 10 players
-  }
-  
-  /**
-   * Broadcast leaderboard updates to all players in a room
-   */
-  function broadcastLeaderboardUpdate(roomId: string) {
-    const leaderboard = getLeaderboard(roomId);
-    io.to(roomId).emit('leaderboardUpdate', {
-      leaderboard: leaderboard,
-      timestamp: Date.now()
-    });
-  }
-  
-  // Send leaderboard updates every 5 seconds
-  setInterval(() => {
-    for (const [roomId] of gameRooms.entries()) {
-      if (gameRooms.get(roomId)!.size > 0) {
-        broadcastLeaderboardUpdate(roomId);
-      }
-    }
-  }, 5000);
 
   // Game-related event handlers (LEGACY - keeping for compatibility)
   socket.on('playerUpdate_legacy', (data) => {
