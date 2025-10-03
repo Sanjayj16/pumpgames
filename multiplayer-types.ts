@@ -31,7 +31,7 @@ export interface PlayerState {
   money: number;                 // Player's money/bounty (starts at $1, increases with kills)
   kills: number;                 // Number of kills
   lastUpdate: number;            // Timestamp of last update
-  foodsEaten: number;           // Number of foods eaten (for segment calculation)
+  foodsEaten?: number;           // Number of foods eaten (for segment calculation)
 }
 
 /**
@@ -115,46 +115,10 @@ export interface KillEvent {
 
 /**
  * Leaderboard Entry (for real-time leaderboard)
- * Shows top players by balance (money)
+ * TODO: Implement real-time leaderboard updates
  */
 export interface LeaderboardEntry {
   username: string;
-  balance: number;
-  kills: number;
-  length: number;
   score: number;
-}
-
-/**
- * Balance Update Event - Sent when a player's balance changes
- */
-export interface BalanceUpdateEvent {
-  playerId: string;
-  newBalance: number;
-  moneyGained: number;
-  reason: 'kill' | 'respawn' | 'bonus';
-  killerUsername?: string;
-  victimUsername?: string;
-  playerUsername?: string;
-  timestamp: number;
-}
-
-/**
- * Player Respawn Event - Sent when a player respawns
- */
-export interface PlayerRespawnEvent {
-  playerId: string;
-  username: string;
-  newPosition: Position;
-  newBalance: number;
-  isBot: boolean;
-  timestamp: number;
-}
-
-/**
- * Leaderboard Update Event - Sent periodically with top players
- */
-export interface LeaderboardUpdateEvent {
-  leaderboard: LeaderboardEntry[];
-  timestamp: number;
+  length: number;
 }
