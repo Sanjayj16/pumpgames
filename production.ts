@@ -30,13 +30,6 @@ const io = new Server(httpServer, {
 
 // Map to track online users allowing multiple sockets per username
 const onlineUsers = new Map<string, Set<string>>();
-
-// Map to store pending kill events for disconnected victims
-const pendingKillEvents = new Map<string, {
-  killerId: string;
-  victimId: string;
-  timestamp: number;
-}>();
 // Store pending friend requests
 const friendRequests = new Map<string, Array<{ id: string; from: string; timestamp: string }>>();
 // Store user's friends list
@@ -1001,15 +994,6 @@ io.on("connection", (socket) => {
     
     if (!victim) {
       console.log(`❌ Kill event error: victim not found (${victimId})`);
-      console.log(`📝 Storing pending kill event for victim ${victimId} (may have disconnected)`);
-      
-      // Store pending kill event in case victim rejoins soon
-      pendingKillEvents.set(victimId, {
-        killerId: socket.id,
-        victimId: victimId,
-        timestamp: Date.now()
-      });
-      
       return;
     }
 
@@ -1037,6 +1021,9 @@ io.on("connection", (socket) => {
     console.log(`💀 ${killer.username} killed ${victim.username} and gained $${moneyGained.toFixed(2)}`);
     console.log(`💰 ${killer.username} now has $${killer.money.toFixed(2)} (${killer.kills} kills)`);
     
+    // Remove victim from room
+    room.delete(victimId);
+    
     // ===== BROADCAST BALANCE UPDATES TO ALL PLAYERS =====
     // Send balance update to killer (their new balance)
     io.to(killer.id).emit('balanceUpdate', {
@@ -1046,21 +1033,13 @@ io.on("connection", (socket) => {
       isKiller: true
     });
     
-    // Send balance update to victim (reset to default $1.00) - only if still connected
-    const victimSocket = io.sockets.sockets.get(victimId);
-    if (victimSocket && victimSocket.connected) {
-      io.to(victim.id).emit('balanceUpdate', {
-        playerId: victim.id,
-        newBalance: 1.00, // Reset to default balance
-        moneyGained: 0,
-        isKiller: false
-      });
-    } else {
-      console.log(`⚠️ Victim ${victimId} already disconnected, skipping balance update`);
-    }
-    
-    // Remove victim from room AFTER sending balance updates
-    room.delete(victimId);
+    // Send balance update to victim (reset to default $1.00)
+    io.to(victim.id).emit('balanceUpdate', {
+      playerId: victim.id,
+      newBalance: 1.00, // Reset to default balance
+      moneyGained: 0,
+      isKiller: false
+    });
     
     // Broadcast kill event to all players in room (for UI notifications)
     io.to(currentRoomId).emit('playerKilled', {
