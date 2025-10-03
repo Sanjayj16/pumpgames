@@ -973,16 +973,24 @@ io.on("connection", (socket) => {
    */
   socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
     // Ignore kills from players not in game
-    if (!isPlayerInGame || !currentRoomId) return;
+    if (!isPlayerInGame || !currentRoomId) {
+      console.log(`⚠️ Kill event ignored: Player not in game or no room`);
+      return;
+    }
     
     const room = gameRooms.get(currentRoomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`⚠️ Kill event ignored: Room ${currentRoomId} not found`);
+      return;
+    }
     
     const killer = room.get(socket.id);
     const victim = room.get(victimId);
     
     if (!killer || !victim) {
-      console.log(`❌ Kill event error: killer or victim not found`);
+      console.log(`❌ Kill event error: killer (${killer ? 'found' : 'not found'}) or victim (${victim ? 'found' : 'not found'}) not found`);
+      console.log(`   Killer ID: ${socket.id}, Victim ID: ${victimId}`);
+      console.log(`   Room players: ${Array.from(room.keys()).join(', ')}`);
       return;
     }
 
@@ -1008,20 +1016,32 @@ io.on("connection", (socket) => {
     
     // ===== BROADCAST BALANCE UPDATES TO ALL PLAYERS =====
     // Send balance update to killer (their new balance)
-    io.to(killer.id).emit('balanceUpdate', {
-      playerId: killer.id,
-      newBalance: killer.money,
-      moneyGained: moneyGained,
-      isKiller: true
-    });
+    const killerSocket = io.sockets.sockets.get(killer.id);
+    if (killerSocket && killerSocket.connected) {
+      killerSocket.emit('balanceUpdate', {
+        playerId: killer.id,
+        newBalance: killer.money,
+        moneyGained: moneyGained,
+        isKiller: true
+      });
+      console.log(`💰 Sent balance update to killer ${killer.username}: $${killer.money.toFixed(2)}`);
+    } else {
+      console.log(`⚠️ Killer ${killer.username} (${killer.id}) not connected, skipping balance update`);
+    }
     
     // Send balance update to victim (reset to default $1.00)
-    io.to(victim.id).emit('balanceUpdate', {
-      playerId: victim.id,
-      newBalance: 1.00, // Reset to default balance
-      moneyGained: 0,
-      isKiller: false
-    });
+    const victimSocket = io.sockets.sockets.get(victim.id);
+    if (victimSocket && victimSocket.connected) {
+      victimSocket.emit('balanceUpdate', {
+        playerId: victim.id,
+        newBalance: 1.00, // Reset to default balance
+        moneyGained: 0,
+        isKiller: false
+      });
+      console.log(`💰 Sent balance reset to victim ${victim.username}: $1.00`);
+    } else {
+      console.log(`⚠️ Victim ${victim.username} (${victim.id}) not connected, skipping balance update`);
+    }
     
     // Broadcast kill event to all players in room (for UI notifications)
     io.to(currentRoomId).emit('playerKilled', {
