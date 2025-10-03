@@ -973,23 +973,16 @@ io.on("connection", (socket) => {
    */
   socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
     // Ignore kills from players not in game
-    if (!isPlayerInGame || !currentRoomId) {
-      console.log(`⚠️ Ignoring kill event: player not in game (isPlayerInGame: ${isPlayerInGame}, currentRoomId: ${currentRoomId})`);
-      return;
-    }
+    if (!isPlayerInGame || !currentRoomId) return;
     
     const room = gameRooms.get(currentRoomId);
-    if (!room) {
-      console.log(`⚠️ Ignoring kill event: room ${currentRoomId} not found`);
-      return;
-    }
+    if (!room) return;
     
     const killer = room.get(socket.id);
     const victim = room.get(victimId);
     
     if (!killer || !victim) {
-      console.log(`❌ Kill event error: killer (${socket.id}) or victim (${victimId}) not found in room ${currentRoomId}`);
-      console.log(`   Room size: ${room.size}, Room players: ${Array.from(room.keys()).join(', ')}`);
+      console.log(`❌ Kill event error: killer or victim not found`);
       return;
     }
 
