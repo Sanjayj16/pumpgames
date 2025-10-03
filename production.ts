@@ -1005,11 +1005,13 @@ io.on("connection", (socket) => {
     // Only real players can transfer money (bots are excluded from money system)
     // Transfer ALL of victim's money to killer
     const moneyGained = victim.money;
+    const killerPreviousMoney = killer.money;
     killer.money += moneyGained;
     killer.kills += 1;
     
-    console.log(`💀 ${killer.username} killed ${victim.username} and gained $${moneyGained.toFixed(2)}`);
-    console.log(`💰 ${killer.username} now has $${killer.money.toFixed(2)} (${killer.kills} kills)`);
+    console.log(`💀 KILL PROCESSED: ${killer.username} killed ${victim.username}`);
+    console.log(`💰 MONEY TRANSFER: $${killerPreviousMoney.toFixed(2)} + $${moneyGained.toFixed(2)} = $${killer.money.toFixed(2)}`);
+    console.log(`📊 KILLS: ${killer.username} now has ${killer.kills} kills`);
     
     // Remove victim from room
     room.delete(victimId);
