@@ -3,7 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { registerRoutes } from "./simple-routes";
 import { storage } from "./storage";
-import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "./multiplayer-types";
+import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "../shared/multiplayer-types";
 
 const app = express();
 const httpServer = createServer(app);
@@ -921,6 +921,12 @@ io.on("connection", (socket) => {
     
     const player = room.get(socket.id);
     if (!player) return;
+    
+    // Validate update data before processing
+    if (!updateData.head || typeof updateData.head.x !== 'number' || typeof updateData.head.y !== 'number') {
+      console.warn(`⚠️ Invalid playerUpdate data from ${socket.id}, skipping update`);
+      return;
+    }
     
     // Update player state with new data
     player.head = updateData.head;
