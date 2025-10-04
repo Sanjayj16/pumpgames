@@ -724,7 +724,7 @@ io.on("connection", (socket) => {
    * This is called frequently (e.g., every 50ms) from each client
    * IMPORTANT: Only processes updates for players who are actually in game
    */
-  socket.on('playerUpdate', (updateData: PlayerUpdate) => {
+  socket.on('playerUpdate', (updateData: any) => {
     // Ignore updates from players not in game
     if (!isPlayerInGame || !currentRoomId) return;
     
@@ -734,27 +734,95 @@ io.on("connection", (socket) => {
     const player = room.get(socket.id);
     if (!player) return;
     
-    // Update player state with new data
-    player.head = updateData.head;
-    player.direction = updateData.direction;
-    player.speed = updateData.speed;
-    player.length = updateData.length;
-    player.isBoosting = updateData.isBoosting;
-    player.lastUpdate = Date.now();
+    // ===== HANDLE CLIENT DATA FORMAT =====
+    // Client sends: { type: 'update', segments: [...], money: ..., totalMass: ..., segmentRadius: ... }
     
-    // Note: segments are updated separately for performance
-    // Full segment data is only sent when necessary (e.g., on growth)
-    
-    // Broadcast update to all OTHER players in the room
-    // We only send the essential data to reduce bandwidth
-    socket.to(currentRoomId).emit('playerUpdate', {
-      id: socket.id,
-      head: player.head,
-      direction: player.direction,
-      speed: player.speed,
-      length: player.length,
-      isBoosting: player.isBoosting
-    });
+    if (updateData.segments && updateData.segments.length > 0) {
+      // Update player state with segments data
+      player.segments = updateData.segments;
+      player.head = updateData.segments[0]; // Head is first segment
+      player.money = updateData.money || player.money;
+      player.totalMass = updateData.totalMass || player.totalMass;
+      player.segmentRadius = updateData.segmentRadius || player.segmentRadius;
+      player.length = updateData.segments.length;
+      player.lastUpdate = Date.now();
+      
+      // ===== SERVER-SIDE COLLISION DETECTION =====
+      // Check if this player collides with any other player
+      let collisionDetected = false;
+      
+      for (const [otherPlayerId, otherPlayer] of room) {
+        if (otherPlayerId === socket.id) continue; // Skip self
+        if (!otherPlayer.segments || otherPlayer.segments.length === 0) continue;
+        
+        // Check if current player's head hits other player's body
+        const currentHead = player.head;
+        for (const segment of otherPlayer.segments) {
+          const distance = Math.sqrt(
+            (currentHead.x - segment.x) ** 2 + 
+            (currentHead.y - segment.y) ** 2
+          );
+          const collisionRadius = (player.segmentRadius || 10) + (otherPlayer.segmentRadius || 10);
+          
+          if (distance < collisionRadius) {
+            console.log(`💥 SERVER COLLISION: ${player.username} crashed into ${otherPlayer.username}!`);
+            collisionDetected = true;
+            
+            // Current player dies, other player gets their money
+            const moneyTransfer = player.money;
+            otherPlayer.money += moneyTransfer;
+            otherPlayer.kills = (otherPlayer.kills || 0) + 1;
+            
+            console.log(`💰 ${otherPlayer.username} gained $${moneyTransfer.toFixed(2)} → Total: $${otherPlayer.money.toFixed(2)}`);
+            
+            // Remove crashed player from room
+            room.delete(socket.id);
+            
+            // Broadcast collision event to all players
+            io.to(currentRoomId).emit('playerCollision', {
+              crashedPlayerId: socket.id,
+              crashedPlayerName: player.username,
+              killerId: otherPlayerId,
+              killerName: otherPlayer.username,
+              moneyTransfer: moneyTransfer,
+              newKillerMoney: otherPlayer.money,
+              newKillerKills: otherPlayer.kills,
+              timestamp: Date.now()
+            });
+            
+            // Send death notification to crashed player
+            socket.emit('death', {
+              reason: 'collision',
+              crashedInto: otherPlayerId,
+              killerName: otherPlayer.username
+            });
+            
+            break;
+          }
+        }
+        
+        if (collisionDetected) break;
+      }
+      
+      // Only broadcast update if no collision detected
+      if (!collisionDetected) {
+        // Broadcast FULL update to all OTHER players in the room
+        socket.to(currentRoomId).emit('playerUpdate', {
+          id: socket.id,
+          segments: updateData.segments,
+          money: updateData.money,
+          totalMass: updateData.totalMass,
+          segmentRadius: updateData.segmentRadius,
+          color: updateData.color || player.color,
+          username: player.username
+        });
+        
+        // Debug logging (reduced frequency)
+        if (Math.random() < 0.01) { // 1% of updates
+          console.log(`🔄 Updated player ${player.username}: ${updateData.segments.length} segments, $${updateData.money?.toFixed(2) || 'N/A'}`);
+        }
+      }
+    }
   });
   
   /**
