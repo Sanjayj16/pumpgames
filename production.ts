@@ -3,7 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { registerRoutes } from "./simple-routes";
 import { storage } from "./storage";
-import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "./multiplayer-types";
+import type { PlayerState, PlayerUpdate, GameStateSnapshot } from "../shared/multiplayer-types";
 
 const app = express();
 const httpServer = createServer(app);
@@ -335,7 +335,7 @@ io.on("connection", (socket) => {
       username: username,
       head: spawnPos,
       direction: Math.random() * Math.PI * 2,
-      speed: 2.5,
+      speed: 3.2, // Moderately faster base speed for balanced gameplay
       length: 10,
       color: generatePlayerColor(),
       segments: [spawnPos],
@@ -973,96 +973,81 @@ io.on("connection", (socket) => {
    */
   socket.on('playerKilled', ({ victimId }: { victimId: string }) => {
     // Ignore kills from players not in game
-    if (!isPlayerInGame || !currentRoomId) {
-      console.log(`⚠️ Kill event ignored: Player not in game or no room`);
-      return;
-    }
+    if (!isPlayerInGame || !currentRoomId) return;
     
     const room = gameRooms.get(currentRoomId);
-    if (!room) {
-      console.log(`⚠️ Kill event ignored: Room ${currentRoomId} not found`);
-      return;
-    }
+    if (!room) return;
     
     const killer = room.get(socket.id);
+    if (!killer) {
+      console.log(`❌ Kill event error: killer not found`);
+      return;
+    }
+    
+    // Try to find victim in the same room first (regular multiplayer player)
     const victim = room.get(victimId);
     
-    if (!killer || !victim) {
-      console.log(`❌ Kill event error: killer (${killer ? 'found' : 'not found'}) or victim (${victim ? 'found' : 'not found'}) not found`);
-      console.log(`   Killer ID: ${socket.id}, Victim ID: ${victimId}`);
-      console.log(`   Room players: ${Array.from(room.keys()).join(', ')}`);
-      return;
-    }
-
-    // ===== PREVENT DUPLICATION ON SIMULTANEOUS KILLS =====
-    // Check if victim is already dead (being processed by another kill event)
-    if (!room.has(victimId)) {
-      console.log(`⚠️ Victim ${victimId} already dead, ignoring duplicate kill event`);
-      return;
-    }
-    
-    // ===== DYNAMIC MONEY TRANSFER SYSTEM =====
-    // Only real players can transfer money (bots are excluded from money system)
-    // Transfer ALL of victim's money to killer
-    const moneyGained = victim.money;
-    const killerPreviousMoney = killer.money;
-    killer.money += moneyGained;
-    killer.kills += 1;
-    
-    console.log(`💀 KILL PROCESSED: ${killer.username} killed ${victim.username}`);
-    console.log(`💰 MONEY TRANSFER: $${killerPreviousMoney.toFixed(2)} + $${moneyGained.toFixed(2)} = $${killer.money.toFixed(2)}`);
-    console.log(`📊 KILLS: ${killer.username} now has ${killer.kills} kills`);
-    
-    // Remove victim from room
-    room.delete(victimId);
-    
-    // ===== BROADCAST BALANCE UPDATES TO ALL PLAYERS =====
-    // Send balance update to killer (their new balance)
-    const killerSocket = io.sockets.sockets.get(killer.id);
-    if (killerSocket && killerSocket.connected) {
-      killerSocket.emit('balanceUpdate', {
-        playerId: killer.id,
-        newBalance: killer.money,
+    if (victim) {
+      // ===== REGULAR MULTIPLAYER PLAYER KILL =====
+      console.log(`💀 Regular player kill: ${killer.username} killed ${victim.username}`);
+      
+      // Transfer money from victim to killer
+      const moneyGained = victim.money;
+      killer.money += moneyGained;
+      killer.kills += 1;
+      
+      console.log(`💰 ${killer.username} gained $${moneyGained.toFixed(2)} → Total: $${killer.money.toFixed(2)} (${killer.kills} kills)`);
+      
+      // Remove victim from room
+      room.delete(victimId);
+      
+      // Broadcast kill event to all players in room
+      io.to(currentRoomId).emit('playerKilled', {
+        killerId: killer.id,
+        killerUsername: killer.username,
+        victimId: victim.id,
+        victimUsername: victim.username,
         moneyGained: moneyGained,
+        newKillerMoney: killer.money,
         newKillerKills: killer.kills,
-        isKiller: true
+        timestamp: Date.now()
       });
-      console.log(`💰 Sent balance update to killer ${killer.username}: $${killer.money.toFixed(2)}`);
-    } else {
-      console.log(`⚠️ Killer ${killer.username} (${killer.id}) not connected, skipping balance update`);
-    }
-    
-    // Send balance update to victim (reset to default $1.00)
-    const victimSocket = io.sockets.sockets.get(victim.id);
-    if (victimSocket && victimSocket.connected) {
-      victimSocket.emit('balanceUpdate', {
-        playerId: victim.id,
-        newBalance: 1.00, // Reset to default balance
-        moneyGained: 0,
-        isKiller: false
+      
+      // Also send playerLeft event so clients remove the victim
+      io.to(currentRoomId).emit('playerLeft', {
+        playerId: victimId,
+        timestamp: Date.now()
       });
-      console.log(`💰 Sent balance reset to victim ${victim.username}: $1.00`);
+      
     } else {
-      console.log(`⚠️ Victim ${victim.username} (${victim.id}) not connected, skipping balance update`);
+      // ===== SERVER SNAKE KILL (from WebSocket system) =====
+      console.log(`💀 Server snake kill: ${killer.username} killed server snake ${victimId}`);
+      
+      // For server snakes, we don't have the victim data in our gameRooms
+      // So we'll use a default money value and let the client handle the details
+      const defaultServerSnakeMoney = 1.00; // Default money for server snakes
+      const moneyGained = defaultServerSnakeMoney;
+      
+      killer.money += moneyGained;
+      killer.kills += 1;
+      
+      console.log(`💰 ${killer.username} gained $${moneyGained.toFixed(2)} from server snake → Total: $${killer.money.toFixed(2)} (${killer.kills} kills)`);
+      
+      // Broadcast kill event to all players in room (server snake kill)
+      io.to(currentRoomId).emit('playerKilled', {
+        killerId: killer.id,
+        killerUsername: killer.username,
+        victimId: victimId,
+        victimUsername: `Server Snake ${victimId.slice(-4)}`, // Generate a name
+        moneyGained: moneyGained,
+        newKillerMoney: killer.money,
+        newKillerKills: killer.kills,
+        timestamp: Date.now(),
+        isServerSnake: true // Flag to indicate this was a server snake
+      });
+      
+      console.log(`✅ Server snake kill confirmed for ${killer.username}`);
     }
-    
-    // Broadcast kill event to all players in room (for UI notifications)
-    io.to(currentRoomId).emit('playerKilled', {
-      killerId: killer.id,
-      killerUsername: killer.username,
-      victimId: victim.id,
-      victimUsername: victim.username,
-      moneyGained: moneyGained,
-      newKillerMoney: killer.money,
-      newKillerKills: killer.kills,
-      timestamp: Date.now()
-    });
-    
-    // Also send playerLeft event so clients remove the victim
-    io.to(currentRoomId).emit('playerLeft', {
-      playerId: victimId,
-      timestamp: Date.now()
-    });
   });
 
   // Game-related event handlers (LEGACY - keeping for compatibility)
