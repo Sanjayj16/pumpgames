@@ -967,11 +967,13 @@ io.on("connection", (socket) => {
             });
             
             // Send death notification to crashed player
+            console.log(`💀 Sending death notification to ${socket.id} (${player.username})`);
             socket.emit('death', {
               reason: 'collision',
               crashedInto: otherPlayerId,
               killerName: otherPlayer.username
             });
+            console.log(`✅ Death notification sent to ${player.username}`);
             
             break;
           }
