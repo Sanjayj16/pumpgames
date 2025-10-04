@@ -938,7 +938,8 @@ io.on("connection", (socket) => {
             (currentHead.x - segment.x) ** 2 + 
             (currentHead.y - segment.y) ** 2
           );
-          const collisionRadius = (player.segmentRadius || 10) + (otherPlayer.segmentRadius || 10);
+          // More forgiving collision radius for better detection
+          const collisionRadius = 20; // Fixed radius for consistent collision detection
           
           if (distance < collisionRadius) {
             console.log(`💥 SERVER COLLISION: ${player.username} crashed into ${otherPlayer.username}!`);
@@ -951,10 +952,13 @@ io.on("connection", (socket) => {
             
             console.log(`💰 ${otherPlayer.username} gained $${moneyTransfer.toFixed(2)} → Total: $${otherPlayer.money.toFixed(2)}`);
             
+            // Store victim's segments for food particle generation
+            const victimSegments = player.segments || [];
+            
             // Remove crashed player from room
             room.delete(socket.id);
             
-            // Broadcast collision event to all players
+            // Broadcast collision event to all players WITH VICTIM SEGMENTS
             io.to(currentRoomId).emit('playerCollision', {
               crashedPlayerId: socket.id,
               crashedPlayerName: player.username,
@@ -963,8 +967,11 @@ io.on("connection", (socket) => {
               moneyTransfer: moneyTransfer,
               newKillerMoney: otherPlayer.money,
               newKillerKills: otherPlayer.kills,
+              victimSegments: victimSegments, // SEND SEGMENTS FOR FOOD GENERATION
               timestamp: Date.now()
             });
+            
+            console.log(`📤 Broadcasted collision with ${victimSegments.length} victim segments for food generation`);
             
             // Send death notification to crashed player
             console.log(`💀 Sending death notification to ${socket.id} (${player.username})`);
