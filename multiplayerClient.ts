@@ -278,10 +278,14 @@ export class MultiplayerManager {
       crashedInto: string;
       killerName: string;
     }) => {
+      console.log(`💀 Received death notification from server:`, event);
       console.log(`💀 You died! Crashed into ${event.killerName}`);
       
       if (this.onPlayerDeath) {
+        console.log(`💀 Calling onPlayerDeath callback`);
         this.onPlayerDeath(event);
+      } else {
+        console.log(`⚠️ No onPlayerDeath callback registered`);
       }
     });
   }
