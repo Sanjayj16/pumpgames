@@ -17,7 +17,9 @@ const io = new Server(httpServer, {
   cors: {
     origin: isProduction
       ? [
-          process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
+          process.env.FRONTEND_URL || "https://pumpgames.fun",
+          "https://pumpgames.fun",
+          "https://www.pumpgames.fun",
           "https://harmonious-boba-11ae9e.netlify.app",
           "http://localhost:5173",
           "http://127.0.0.1:5173",
@@ -938,8 +940,8 @@ io.on("connection", (socket) => {
             (currentHead.x - segment.x) ** 2 + 
             (currentHead.y - segment.y) ** 2
           );
-          // More forgiving collision radius for better detection
-          const collisionRadius = 20; // Fixed radius for consistent collision detection
+          // MUCH MORE AGGRESSIVE collision radius for 1000% better detection
+          const collisionRadius = 35; // Increased from 20 to 35 for ultra-responsive collision
           
           if (distance < collisionRadius) {
             console.log(`💥 SERVER COLLISION: ${player.username} crashed into ${otherPlayer.username}!`);
@@ -1281,7 +1283,9 @@ io.on("connection", (socket) => {
 app.use((req, res, next) => {
   const allowedOrigins = isProduction
     ? [
-        process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
+        process.env.FRONTEND_URL || "https://pumpgames.fun",
+        "https://pumpgames.fun",
+        "https://www.pumpgames.fun",
         "https://harmonious-boba-11ae9e.netlify.app",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -1497,7 +1501,9 @@ app.use(express.static("public"));
     console.log(`🔌 Socket.IO path: /socket.io`);
     console.log(`🔌 WebSocket path: /ws`);
     console.log(`🌍 CORS allowed origins:`, isProduction ? [
-      process.env.FRONTEND_URL || "https://harmonious-boba-11ae9e.netlify.app",
+      process.env.FRONTEND_URL || "https://pumpgames.fun",
+      "https://pumpgames.fun",
+      "https://www.pumpgames.fun",
       "https://harmonious-boba-11ae9e.netlify.app",
       "http://localhost:5173",
       "http://127.0.0.1:5173",
