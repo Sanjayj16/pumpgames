@@ -110,9 +110,9 @@
     "id": "1757579119396",
     "username": "cruze",
     "password": "cruze@123",
-    "balance": 9902.237333333333,
-    "holdBalance": 205.2,
-    "lastDailyRewardClaim": "2025-09-22T08:11:34.322Z",
+    "balance": 9850.337333333333,
+    "holdBalance": 257.2,
+    "lastDailyRewardClaim": "2025-09-30T05:55:23.227Z",
     "gamesPlayedToday": 3,
     "lastGameDate": "2025-09-20T06:31:13.698Z",
     "hasPlayedGame": true,
@@ -721,8 +721,8 @@
     "id": "1757900000000",
     "username": "richplayer",
     "password": "rich@9486",
-    "balance": 9133.438041666665,
-    "holdBalance": 305,
+    "balance": 9144.438041666665,
+    "holdBalance": 294,
     "lastDailyRewardClaim": "2025-09-15T00:00:00.000Z",
     "gamesPlayedToday": 23,
     "lastGameDate": "2025-09-18T20:38:28.510Z",
@@ -928,92 +928,242 @@
   },
   {
     "id": "1758600000001",
-    "username": "AlexCrypton",
-    "password": "crypto2024",
-    "balance": 12847.35,
+    "username": "ShadowHunter",
+    "password": "shadow123",
+    "balance": 127.50,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T10:15:32.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000002",
-    "username": "SarahMoonTrader",
-    "password": "moon123",
-    "balance": 8932.67,
+    "username": "DragonSlayer",
+    "password": "dragon123",
+    "balance": 89.75,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T09:22:15.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000003",
-    "username": "DiamondHandsDave",
-    "password": "diamond2024",
-    "balance": 15643.89,
+    "username": "NightCrawler",
+    "password": "night123",
+    "balance": 234.25,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T08:45:22.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000004",
-    "username": "LunaStorm",
-    "password": "storm456",
-    "balance": 11234.12,
+    "username": "FireStorm",
+    "password": "fire123",
+    "balance": 156.80,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T11:33:45.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000005",
-    "username": "BlockchainBob",
-    "password": "block789",
-    "balance": 9876.54,
+    "username": "IceQueen",
+    "password": "ice123",
+    "balance": 312.45,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T07:19:33.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000006",
-    "username": "NeonNinja",
-    "password": "neon2025",
-    "balance": 13567.88,
+    "username": "ThunderBolt",
+    "password": "thunder123",
+    "balance": 78.90,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T12:07:11.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000007",
-    "username": "CryptoQueen23",
-    "password": "queen234",
-    "balance": 7789.45,
+    "username": "StormRider",
+    "password": "storm123",
+    "balance": 198.30,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T06:54:28.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000008",
-    "username": "RocketRider88",
-    "password": "rocket888",
-    "balance": 14892.33,
+    "username": "BladeMaster",
+    "password": "blade123",
+    "balance": 267.15,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T13:41:56.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000009",
-    "username": "PhoenixFlame",
-    "password": "phoenix999",
-    "balance": 10445.77,
+    "username": "CyberNinja",
+    "password": "cyber123",
+    "balance": 145.60,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T05:28:14.000Z"
+    "canWithdraw": false
   },
   {
     "id": "1758600000010",
-    "username": "VoidWalker42",
-    "password": "void4242",
-    "balance": 16234.91,
+    "username": "GhostRider",
+    "password": "ghost123",
+    "balance": 89.25,
     "holdBalance": 0,
-    "isClipper": true,
-    "lastDailyRewardClaim": "2025-09-26T14:16:37.000Z"
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000011",
+    "username": "PhoenixRising",
+    "password": "phoenix123",
+    "balance": 356.70,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000012",
+    "username": "SteelWolf",
+    "password": "steel123",
+    "balance": 123.45,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000013",
+    "username": "CrimsonBlade",
+    "password": "crimson123",
+    "balance": 278.90,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000014",
+    "username": "VoidWalker",
+    "password": "void123",
+    "balance": 167.35,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000015",
+    "username": "FrostGiant",
+    "password": "frost123",
+    "balance": 234.80,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000016",
+    "username": "LightningStrike",
+    "password": "lightning123",
+    "balance": 189.50,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000017",
+    "username": "DarkKnight",
+    "password": "dark123",
+    "balance": 145.25,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000018",
+    "username": "SilverArrow",
+    "password": "silver123",
+    "balance": 312.75,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000019",
+    "username": "GoldenEagle",
+    "password": "golden123",
+    "balance": 98.40,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000020",
+    "username": "CrystalMage",
+    "password": "crystal123",
+    "balance": 256.90,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000021",
+    "username": "IronFist",
+    "password": "iron123",
+    "balance": 178.65,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000022",
+    "username": "WindDancer",
+    "password": "wind123",
+    "balance": 134.20,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000023",
+    "username": "MoonShadow",
+    "password": "moon123",
+    "balance": 298.55,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000024",
+    "username": "StarGazer",
+    "password": "star123",
+    "balance": 167.80,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000025",
+    "username": "BloodRaven",
+    "password": "blood123",
+    "balance": 223.45,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000026",
+    "username": "SoulReaper",
+    "password": "soul123",
+    "balance": 156.30,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000027",
+    "username": "WarMachine",
+    "password": "war123",
+    "balance": 345.25,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000028",
+    "username": "SkyHunter",
+    "password": "sky123",
+    "balance": 112.75,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000029",
+    "username": "EarthShaker",
+    "password": "earth123",
+    "balance": 267.40,
+    "holdBalance": 0,
+    "canWithdraw": false
+  },
+  {
+    "id": "1758600000030",
+    "username": "FlameKeeper",
+    "password": "flame123",
+    "balance": 189.85,
+    "holdBalance": 0,
+    "canWithdraw": false
   }
 ]
