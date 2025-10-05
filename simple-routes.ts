@@ -486,8 +486,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Check if user is a clipper account (cannot withdraw)
-      if (user.isClipper) {
+      // Check if user can withdraw (either isClipper or canWithdraw: false)
+      if (user.isClipper || user.canWithdraw === false) {
         return res.status(403).json({
           success: false,
           message: 'Withdrawals are not allowed for this account type'
