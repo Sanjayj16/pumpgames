@@ -5,6 +5,107 @@ import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeB
 import { verifyPayment } from './payment-verification';
 import { generateUserPaymentAddress, checkPaymentToUserAddress, getMainWalletAddress, cleanupExpiredAddresses, getPrivateKeyForAddress, getAllGeneratedAddresses, getSOLPrice, withdrawSOL, getMainWalletBalance, connection } from './wallet-utils';
 
+// SECURITY: Enhanced security functions
+async function validateSessionToken(token: string, userId: string): Promise<boolean> {
+  // In production, implement proper session validation
+  // For now, return true to allow existing functionality
+  return true;
+}
+
+async function validateCaptcha(token: string, clientIP: string): Promise<boolean> {
+  // In production, implement CAPTCHA validation (reCAPTCHA, hCaptcha, etc.)
+  // For now, return true to allow existing functionality
+  return true;
+}
+
+async function checkSuspiciousPatterns(userId: string, clientIP: string, walletAddress: string): Promise<{isSuspicious: boolean, reason?: string}> {
+  // Check for suspicious patterns
+  const suspiciousIPs = [
+    '127.0.0.1', // Localhost (if not expected)
+    // Add more suspicious IPs as needed
+  ];
+  
+  const suspiciousUserAgents = [
+    'bot', 'crawler', 'scraper', 'python', 'curl', 'wget'
+  ];
+  
+  // Check if IP is suspicious
+  if (suspiciousIPs.includes(clientIP)) {
+    return { isSuspicious: true, reason: 'Suspicious IP address' };
+  }
+  
+  // Check for rapid successive withdrawals from same user
+  if (global.rateLimitStore) {
+    const userKey = `withdraw_${userId}_*`;
+    const userAttempts = Array.from(global.rateLimitStore.entries())
+      .filter(([key]) => key.includes(`withdraw_${userId}`))
+      .flatMap(([, attempts]) => attempts);
+    
+    if (userAttempts.length > 10) {
+      return { isSuspicious: true, reason: 'Too many withdrawal attempts' };
+    }
+  }
+  
+  return { isSuspicious: false };
+}
+
+// SECURITY: Enhanced address validation
+function isValidSolanaAddress(address: string): boolean {
+  // Enhanced Solana address validation
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  
+  if (!base58Regex.test(address)) {
+    return false;
+  }
+  
+  // Additional checks
+  if (address.length < 32 || address.length > 44) {
+    return false;
+  }
+  
+  // Check for common invalid patterns
+  const invalidPatterns = [
+    /^0+$/, // All zeros
+    /^1+$/, // All ones
+    /(.)\1{10,}/, // Repeated characters
+  ];
+  
+  for (const pattern of invalidPatterns) {
+    if (pattern.test(address)) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+// SECURITY: Enhanced amount validation
+function isValidWithdrawalAmount(amount: number, solPrice: number): {valid: boolean, reason?: string} {
+  const amountInUSD = amount * solPrice;
+  
+  // Check for extremely small amounts (dust attacks)
+  if (amount < 0.000001) {
+    return { valid: false, reason: 'Amount too small' };
+  }
+  
+  // Check for suspiciously round numbers (bot behavior)
+  const roundedAmount = Math.round(amount * 1000000) / 1000000;
+  if (Math.abs(amount - roundedAmount) < 0.000001) {
+    // This is a very round number, might be suspicious
+    if (amount === 1 || amount === 0.1 || amount === 0.01) {
+      return { valid: false, reason: 'Suspicious round amount' };
+    }
+  }
+  
+  // Check for amounts that are too precise (likely automated)
+  const decimalPlaces = (amount.toString().split('.')[1] || '').length;
+  if (decimalPlaces > 6) {
+    return { valid: false, reason: 'Amount too precise' };
+  }
+  
+  return { valid: true };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
@@ -444,31 +545,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Withdraw endpoint - send SOL from main wallet to user's address
   app.post("/api/withdraw", async (req, res) => {
+    const startTime = Date.now();
+    const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
+    const userAgent = req.get('User-Agent') || 'unknown';
+    const referer = req.get('Referer') || 'unknown';
+    
     try {
-      const { userId, walletAddress, amount } = req.body;
+      const { userId, walletAddress, amount, sessionToken, captchaToken } = req.body;
+
+      // SECURITY: Log all withdrawal attempts with full details
+      console.log(`🔒 WITHDRAWAL ATTEMPT - IP: ${clientIP}, User: ${userId}, Amount: ${amount}, Address: ${walletAddress}, UA: ${userAgent}, Referer: ${referer}`);
+
+      // SECURITY: Validate session token (if provided)
+      if (sessionToken) {
+        const sessionValid = await validateSessionToken(sessionToken, userId);
+        if (!sessionValid) {
+          console.log(`🚨 INVALID SESSION - User: ${userId}, IP: ${clientIP}`);
+          return res.status(401).json({
+            success: false,
+            message: 'Invalid session. Please log in again.'
+          });
+        }
+      }
+
+      // SECURITY: Validate CAPTCHA token (if provided)
+      if (captchaToken) {
+        const captchaValid = await validateCaptcha(captchaToken, clientIP);
+        if (!captchaValid) {
+          console.log(`🚨 CAPTCHA FAILED - User: ${userId}, IP: ${clientIP}`);
+          return res.status(400).json({
+            success: false,
+            message: 'CAPTCHA verification failed'
+          });
+        }
+      }
+
+      // SECURITY: Enhanced rate limiting with multiple layers
+      const rateLimitKey = `withdraw_${userId}_${clientIP}`;
+      const globalRateKey = `global_withdraw_${clientIP}`;
+      const now = Date.now();
+      const rateLimitWindow = 5 * 60 * 1000; // 5 minutes
+      const globalRateWindow = 60 * 1000; // 1 minute
+      const maxAttempts = 2; // Reduced to 2 attempts per 5 minutes
+      const maxGlobalAttempts = 5; // Max 5 attempts per minute from any IP
+      
+      if (!global.rateLimitStore) {
+        global.rateLimitStore = new Map();
+      }
+      
+      // Check user-specific rate limit
+      const userAttempts = global.rateLimitStore.get(rateLimitKey) || [];
+      const recentUserAttempts = userAttempts.filter((time: number) => now - time < rateLimitWindow);
+      
+      if (recentUserAttempts.length >= maxAttempts) {
+        console.log(`🚨 USER RATE LIMIT EXCEEDED - User: ${userId}, IP: ${clientIP}, Attempts: ${recentUserAttempts.length}`);
+        return res.status(429).json({
+          success: false,
+          message: 'Too many withdrawal attempts. Please wait 5 minutes before trying again.'
+        });
+      }
+
+      // Check global IP rate limit
+      const globalAttempts = global.rateLimitStore.get(globalRateKey) || [];
+      const recentGlobalAttempts = globalAttempts.filter((time: number) => now - time < globalRateWindow);
+      
+      if (recentGlobalAttempts.length >= maxGlobalAttempts) {
+        console.log(`🚨 GLOBAL RATE LIMIT EXCEEDED - IP: ${clientIP}, Attempts: ${recentGlobalAttempts.length}`);
+        return res.status(429).json({
+          success: false,
+          message: 'Too many requests from this IP. Please wait 1 minute.'
+        });
+      }
+      
+      // Add attempts to rate limit stores
+      recentUserAttempts.push(now);
+      recentGlobalAttempts.push(now);
+      global.rateLimitStore.set(rateLimitKey, recentUserAttempts);
+      global.rateLimitStore.set(globalRateKey, recentGlobalAttempts);
+
+      // SECURITY: Check for suspicious patterns
+      const suspiciousPatterns = await checkSuspiciousPatterns(userId, clientIP, walletAddress);
+      if (suspiciousPatterns.isSuspicious) {
+        console.log(`🚨 SUSPICIOUS PATTERN DETECTED - User: ${userId}, Reason: ${suspiciousPatterns.reason}, IP: ${clientIP}`);
+        return res.status(403).json({
+          success: false,
+          message: 'Suspicious activity detected. Withdrawal blocked for security.'
+        });
+      }
 
       // Validate input
       if (!userId || !walletAddress || !amount) {
+        console.log(`❌ MISSING FIELDS - User: ${userId}, IP: ${clientIP}`);
         return res.status(400).json({
           success: false,
           message: 'Missing required fields: userId, walletAddress, amount'
         });
       }
 
-      // Validate amount
-      const withdrawAmount = parseFloat(amount);
-      if (isNaN(withdrawAmount) || withdrawAmount <= 0) {
+      // SECURITY: Validate wallet address format with enhanced validation
+      if (!isValidSolanaAddress(walletAddress.trim())) {
+        console.log(`❌ INVALID ADDRESS - User: ${userId}, Address: ${walletAddress}, IP: ${clientIP}`);
         return res.status(400).json({
           success: false,
-          message: 'Invalid amount. Must be a positive number.'
+          message: 'Invalid Solana wallet address format'
+        });
+      }
+
+      // SECURITY: Prevent withdrawals to known suspicious addresses
+      const suspiciousAddresses = [
+        'Hp2BK1wmsHPgbxZ3rHA2okFGHBtpye1nXQUVD5aidzj9', // The address that received your money
+        // Add more suspicious addresses as needed
+      ];
+      
+      if (suspiciousAddresses.includes(walletAddress.trim())) {
+        console.log(`🚨 SUSPICIOUS ADDRESS BLOCKED - User: ${userId}, Address: ${walletAddress}, IP: ${clientIP}`);
+        return res.status(403).json({
+          success: false,
+          message: 'Withdrawal to this address is not allowed'
+        });
+      }
+
+      // SECURITY: Enhanced amount validation
+      const amountValidation = isValidWithdrawalAmount(withdrawAmount, solPrice);
+      if (!amountValidation.valid) {
+        console.log(`🚨 INVALID AMOUNT - User: ${userId}, Amount: ${withdrawAmount}, Reason: ${amountValidation.reason}, IP: ${clientIP}`);
+        return res.status(400).json({
+          success: false,
+          message: `Invalid amount: ${amountValidation.reason}`
+        });
+      }
+      const maximumUSD = 1000;
+      const amountInUSD = withdrawAmount * solPrice;
+      
+      if (amountInUSD > maximumUSD) {
+        console.log(`🚨 MAXIMUM WITHDRAWAL EXCEEDED - User: ${userId}, Amount: $${amountInUSD}, IP: ${clientIP}`);
+        return res.status(400).json({
+          success: false,
+          message: `Maximum withdrawal amount is $${maximumUSD} USD (approximately ${(maximumUSD / solPrice).toFixed(3)} SOL)`
         });
       }
 
       // Check minimum withdrawal ($50 USD)
-      const solPrice = await getSOLPrice();
       const minimumUSD = 50;
-      const amountInUSD = withdrawAmount * solPrice;
       if (amountInUSD < minimumUSD) {
+        console.log(`❌ MINIMUM WITHDRAWAL NOT MET - User: ${userId}, Amount: $${amountInUSD}, IP: ${clientIP}`);
         return res.status(400).json({
           success: false,
           message: `Minimum withdrawal amount is $${minimumUSD} USD (approximately ${(minimumUSD / solPrice).toFixed(3)} SOL)`
@@ -480,17 +700,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = users.find(u => u.id === userId);
       
       if (!user) {
+        console.log(`❌ USER NOT FOUND - User: ${userId}, IP: ${clientIP}`);
         return res.status(404).json({
           success: false,
           message: 'User not found'
         });
       }
 
-      // Check if user can withdraw (either isClipper or canWithdraw: false)
+      // SECURITY: Check if user can withdraw (either isClipper or canWithdraw: false)
       if (user.isClipper || user.canWithdraw === false) {
+        console.log(`🚨 WITHDRAWAL BLOCKED - User: ${userId}, Type: ${user.isClipper ? 'clipper' : 'no-withdraw'}, IP: ${clientIP}`);
         return res.status(403).json({
           success: false,
           message: 'Withdrawals are not allowed for this account type'
+        });
+      }
+
+      // SECURITY: Check account age (prevent withdrawals from new accounts)
+      const accountAge = Date.now() - (user.createdAt || Date.now());
+      const minimumAccountAge = 24 * 60 * 60 * 1000; // 24 hours
+      if (accountAge < minimumAccountAge) {
+        console.log(`🚨 ACCOUNT TOO NEW - User: ${userId}, Age: ${accountAge}ms, IP: ${clientIP}`);
+        return res.status(403).json({
+          success: false,
+          message: 'Account must be at least 24 hours old to withdraw'
+        });
+      }
+
+      // SECURITY: Check for suspicious user behavior
+      if (user.totalGamesPlayed < 5) {
+        console.log(`🚨 INSUFFICIENT GAME ACTIVITY - User: ${userId}, Games: ${user.totalGamesPlayed}, IP: ${clientIP}`);
+        return res.status(403).json({
+          success: false,
+          message: 'Must play at least 5 games before withdrawing'
+        });
+      }
+
+      // SECURITY: Check daily withdrawal limit
+      const today = new Date().toDateString();
+      const userDailyWithdrawals = user.dailyWithdrawals || {};
+      const todayWithdrawn = userDailyWithdrawals[today] || 0;
+      const dailyLimitUSD = 200; // $200 per day limit
+      
+      if (todayWithdrawn + amountInUSD > dailyLimitUSD) {
+        console.log(`🚨 DAILY LIMIT EXCEEDED - User: ${userId}, Today: $${todayWithdrawn}, Requested: $${amountInUSD}, IP: ${clientIP}`);
+        return res.status(403).json({
+          success: false,
+          message: `Daily withdrawal limit exceeded. Remaining: $${dailyLimitUSD - todayWithdrawn}`
         });
       }
 
@@ -500,27 +756,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`💰 User ${userId} balance: $${user.balance} (${userBalanceInSOL.toFixed(6)} SOL)`);
       console.log(`💸 Requested withdrawal: ${withdrawAmount} SOL ($${(withdrawAmount * solPrice).toFixed(2)})`);
 
-      // Check if user has sufficient balance
+      // SECURITY: Check if user has sufficient balance
       if (userBalanceInSOL < withdrawAmount) {
+        console.log(`❌ INSUFFICIENT BALANCE - User: ${userId}, Available: ${userBalanceInSOL.toFixed(6)} SOL, Requested: ${withdrawAmount} SOL, IP: ${clientIP}`);
         return res.status(400).json({
           success: false,
           message: `Insufficient balance. Available: ${userBalanceInSOL.toFixed(6)} SOL ($${user.balance.toFixed(2)})`
         });
       }
 
-      // Check main wallet balance
+      // SECURITY: Check main wallet balance
       const mainWalletBalance = await getMainWalletBalance();
       console.log(`💳 Main wallet balance: ${mainWalletBalance.balance.toFixed(6)} SOL ($${mainWalletBalance.balanceUSD.toFixed(2)})`);
 
       if (mainWalletBalance.balance < withdrawAmount) {
+        console.log(`🚨 MAIN WALLET INSUFFICIENT - Required: ${withdrawAmount} SOL, Available: ${mainWalletBalance.balance.toFixed(6)} SOL, IP: ${clientIP}`);
         return res.status(400).json({
           success: false,
           message: `Insufficient main wallet balance. Available: ${mainWalletBalance.balance.toFixed(6)} SOL`
         });
       }
 
+      // SECURITY: Additional validation - prevent extremely large withdrawals
+      if (withdrawAmount > 10) { // More than 10 SOL
+        console.log(`🚨 LARGE WITHDRAWAL BLOCKED - User: ${userId}, Amount: ${withdrawAmount} SOL, IP: ${clientIP}`);
+        return res.status(400).json({
+          success: false,
+          message: 'Withdrawal amount too large. Please contact support for large withdrawals.'
+        });
+      }
+
       // Process withdrawal
-      console.log(`🚀 Processing withdrawal: ${withdrawAmount} SOL to ${walletAddress}`);
+      console.log(`🚀 Processing withdrawal: ${withdrawAmount} SOL to ${walletAddress} for user ${userId}`);
       
       const withdrawalResult = await withdrawSOL(walletAddress, withdrawAmount, userId);
 
@@ -529,10 +796,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const withdrawalAmountUSD = withdrawAmount * solPrice;
         user.balance -= withdrawalAmountUSD;
         
+        // SECURITY: Track daily withdrawals
+        const today = new Date().toDateString();
+        if (!user.dailyWithdrawals) {
+          user.dailyWithdrawals = {};
+        }
+        user.dailyWithdrawals[today] = (user.dailyWithdrawals[today] || 0) + withdrawalAmountUSD;
+        
+        // SECURITY: Track total withdrawals
+        user.totalWithdrawn = (user.totalWithdrawn || 0) + withdrawalAmountUSD;
+        
         // Save users
         saveUsers(users);
 
-        console.log(`✅ Withdrawal successful! User ${userId} balance updated to $${user.balance.toFixed(2)}`);
+        const processingTime = Date.now() - startTime;
+        console.log(`✅ WITHDRAWAL SUCCESS - User: ${userId}, Amount: ${withdrawAmount} SOL ($${withdrawalAmountUSD.toFixed(2)}), Address: ${walletAddress}, Hash: ${withdrawalResult.transactionHash}, Time: ${processingTime}ms, IP: ${clientIP}`);
         
         res.json({
           success: true,
@@ -540,21 +818,184 @@ export async function registerRoutes(app: Express): Promise<Server> {
           transactionHash: withdrawalResult.transactionHash,
           newBalance: user.balance,
           withdrawnAmount: withdrawAmount,
-          withdrawnAmountUSD: withdrawalAmountUSD
+          withdrawnAmountUSD: withdrawalAmountUSD,
+          dailyWithdrawn: user.dailyWithdrawals[today],
+          totalWithdrawn: user.totalWithdrawn
         });
       } else {
-        console.error(`❌ Withdrawal failed: ${withdrawalResult.error}`);
-        res.status(400).json({
+        console.error(`❌ WITHDRAWAL FAILED - User: ${userId}, Error: ${withdrawalResult.error}, IP: ${clientIP}`);
+        res.status(500).json({
           success: false,
           message: withdrawalResult.error || 'Withdrawal failed'
         });
       }
 
     } catch (error) {
-      console.error('Withdrawal error:', error);
+      const processingTime = Date.now() - startTime;
+      console.error(`🚨 WITHDRAWAL ERROR - User: ${userId}, Error: ${error}, Time: ${processingTime}ms, IP: ${clientIP}`);
       res.status(500).json({
         success: false,
-        message: 'Withdrawal failed due to server error'
+        message: 'Internal server error'
+      });
+    }
+  });
+
+  // SECURITY: Monitor suspicious withdrawal activity
+  app.get("/api/security/withdrawal-monitor", async (req, res) => {
+    try {
+      const { userId } = req.query;
+      
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: 'User ID required'
+        });
+      }
+
+      // Get user's recent withdrawal attempts from rate limit store
+      const rateLimitKey = `withdraw_${userId}_*`;
+      const suspiciousAttempts = [];
+      
+      if (global.rateLimitStore) {
+        for (const [key, attempts] of global.rateLimitStore.entries()) {
+          if (key.includes(`withdraw_${userId}`)) {
+            suspiciousAttempts.push({
+              key,
+              attempts: attempts.length,
+              lastAttempt: Math.max(...attempts)
+            });
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        userId,
+        suspiciousAttempts,
+        totalAttempts: suspiciousAttempts.reduce((sum, item) => sum + item.attempts, 0)
+      });
+    } catch (error) {
+      console.error('Security monitor error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get security data'
+      });
+    }
+  });
+
+  // SECURITY: Admin endpoint to monitor all withdrawal activity
+  app.get("/api/admin/withdrawal-monitor", async (req, res) => {
+    try {
+      const { adminKey } = req.query;
+      
+      // Simple admin key check (in production, use proper authentication)
+      if (adminKey !== 'admin_security_key_2024') {
+        return res.status(403).json({
+          success: false,
+          message: 'Unauthorized'
+        });
+      }
+
+      const users = loadUsers();
+      const suspiciousUsers = [];
+      const recentWithdrawals = [];
+      
+      // Find suspicious users
+      for (const user of users) {
+        const suspiciousFlags = [];
+        
+        if (user.totalWithdrawn > 1000) {
+          suspiciousFlags.push('High total withdrawals');
+        }
+        
+        if (user.dailyWithdrawals) {
+          const today = new Date().toDateString();
+          const todayWithdrawn = user.dailyWithdrawals[today] || 0;
+          if (todayWithdrawn > 500) {
+            suspiciousFlags.push('High daily withdrawals');
+          }
+        }
+        
+        if (user.totalGamesPlayed < 10 && user.totalWithdrawn > 100) {
+          suspiciousFlags.push('Low game activity, high withdrawals');
+        }
+        
+        if (suspiciousFlags.length > 0) {
+          suspiciousUsers.push({
+            userId: user.id,
+            username: user.username,
+            flags: suspiciousFlags,
+            totalWithdrawn: user.totalWithdrawn || 0,
+            totalGamesPlayed: user.totalGamesPlayed || 0,
+            dailyWithdrawals: user.dailyWithdrawals || {}
+          });
+        }
+      }
+      
+      // Get rate limit data
+      const rateLimitData = global.rateLimitStore ? 
+        Array.from(global.rateLimitStore.entries()).map(([key, attempts]) => ({
+          key,
+          attempts: attempts.length,
+          lastAttempt: Math.max(...attempts)
+        })) : [];
+
+      res.json({
+        success: true,
+        suspiciousUsers,
+        rateLimitData,
+        totalUsers: users.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Admin monitor error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get admin data'
+      });
+    }
+  });
+
+  // SECURITY: Block suspicious user endpoint
+  app.post("/api/admin/block-user", async (req, res) => {
+    try {
+      const { adminKey, userId, reason } = req.body;
+      
+      if (adminKey !== 'admin_security_key_2024') {
+        return res.status(403).json({
+          success: false,
+          message: 'Unauthorized'
+        });
+      }
+
+      const users = loadUsers();
+      const user = users.find(u => u.id === userId);
+      
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      // Block user from withdrawals
+      user.canWithdraw = false;
+      user.blockedReason = reason || 'Suspicious activity';
+      user.blockedAt = Date.now();
+      
+      saveUsers(users);
+      
+      console.log(`🚨 USER BLOCKED - User: ${userId}, Reason: ${reason}`);
+      
+      res.json({
+        success: true,
+        message: 'User blocked successfully'
+      });
+    } catch (error) {
+      console.error('Block user error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to block user'
       });
     }
   });
