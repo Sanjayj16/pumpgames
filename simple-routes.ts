@@ -464,11 +464,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Check minimum withdrawal (0.01 SOL to cover transaction fees)
-      if (withdrawAmount < 0.01) {
+      // Check minimum withdrawal ($50 USD)
+      const solPrice = await getSOLPrice();
+      const minimumUSD = 50;
+      const amountInUSD = withdrawAmount * solPrice;
+      if (amountInUSD < minimumUSD) {
         return res.status(400).json({
           success: false,
-          message: 'Minimum withdrawal amount is 0.01 SOL'
+          message: `Minimum withdrawal amount is $${minimumUSD} USD (approximately ${(minimumUSD / solPrice).toFixed(3)} SOL)`
         });
       }
 
@@ -491,8 +494,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Convert USD balance to SOL for withdrawal
-      const solPrice = await getSOLPrice();
+      // solPrice already fetched above for minimum validation
       const userBalanceInSOL = user.balance / solPrice;
 
       console.log(`💰 User ${userId} balance: $${user.balance} (${userBalanceInSOL.toFixed(6)} SOL)`);
@@ -1022,60 +1024,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
-  // Convert dead player into food particles
-  function convertPlayerToFood(player: any, playerId: string) {
-    const foodParticles = [];
-    const segments = player.segments || [];
-    
-    if (segments.length === 0) return foodParticles;
-    
-    // Create food particles based on player size
-    const maxFoodParticles = Math.min(segments.length * 2, 50); // Cap at 50 particles
-    const baseRadius = 4;
-    const colors = [
-      '#4caf50', '#81c784', '#66bb6a', // Light greens
-      '#03a9f4', '#64b5f6', '#42a5f5', '#90caf9', // Light blues
-      '#ff9800', '#ffb74d', '#ffa726', // Oranges  
-      '#e91e63', '#f06292', '#ec407a', '#ad1457' // Pinks
-    ];
-    
-    // Place food particles around the death location with some spread
-    const centerX = segments[0]?.x || 0;
-    const centerY = segments[0]?.y || 0;
-    const spreadRadius = Math.min(200, segments.length * 3); // Spread based on snake size
-    
-    for (let i = 0; i < maxFoodParticles; i++) {
-      // Random position within spread radius
-      const angle = Math.random() * Math.PI * 2;
-      const distance = Math.random() * spreadRadius;
-      const x = centerX + Math.cos(angle) * distance;
-      const y = centerY + Math.sin(angle) * distance;
-      
-      // Random food properties - death food is more valuable than regular food
-      const isSuperFood = Math.random() < 0.25; // 25% chance for bigger food from death
-      const radius = isSuperFood ? baseRadius * 2.5 : baseRadius + Math.random() * 3;
-      const mass = isSuperFood ? 1.2 : 0.6 + Math.random() * 0.6; // Higher mass values than regular food
-      
-      foodParticles.push({
-        id: `death_${playerId}_${i}_${Date.now()}`,
-        x: x,
-        y: y,
-        vx: 0,
-        vy: 0,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        radius: radius,
-        mass: mass,
-        wobbleOffset: Math.random() * Math.PI * 2,
-        isSuperFood: isSuperFood,
-        isDeathFood: true, // Mark as food from dead player
-        sourcePlayer: playerId
-      });
-    }
-    
-    console.log(`💀 Player ${playerId} converted into ${foodParticles.length} food particles`);
-    return foodParticles;
-  }
-
   // Smart spawning system
   function findSafeSpawnPosition(room: any): { x: number; y: number; isOuterRing: boolean } {
     const arenaSize = room.gameState.arenaSize;
@@ -1434,86 +1382,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`👻 Player ${playerId} exited ghost mode (moved)`);
             }
             
-            // Check for collision with other players (only if not in ghost mode)
-            let collisionDetected = false;
-            if (!player.isGhost && message.data.segments && message.data.segments.length > 0) {
-              const currentPlayerHead = message.data.segments[0];
-              const currentPlayerRadius = message.data.segmentRadius || 10;
-              
-              // Check collision with all other players in the same room (including bots)
-              for (const [otherPlayerId, otherPlayer] of targetRoom.gameState.players) {
-                if (otherPlayerId === playerId) continue; // Skip self
-                if (otherPlayer.isGhost && !otherPlayer.isBot) continue; // Skip players in ghost mode (bots don't have ghost mode)
-                if (!otherPlayer.segments || otherPlayer.segments.length === 0) continue;
-                
-                // Check collision with all segments of other player/bot
-                for (const segment of otherPlayer.segments) {
-                  const distance = Math.sqrt(
-                    (currentPlayerHead.x - segment.x) ** 2 + 
-                    (currentPlayerHead.y - segment.y) ** 2
-                  );
-                  const collisionRadius = currentPlayerRadius + (otherPlayer.segmentRadius || 10);
-                  
-                  if (distance < collisionRadius) {
-                    collisionDetected = true;
-                    console.log(`💥 Collision detected: Player ${playerId} hit ${otherPlayer.isBot ? 'bot' : 'player'} ${otherPlayerId}`);
-                    
-                    // Notify the current player about the collision
-                    ws.send(JSON.stringify({
-                      type: 'collision',
-                      collidedWith: otherPlayerId,
-                      reason: otherPlayer.isBot ? 'bot_collision' : 'player_collision'
-                    }));
-                    
-                    // If other player is a human, notify them too
-                    if (!otherPlayer.isBot) {
-                      const otherPlayerWs = Array.from(wss.clients).find((client: any) => client.playerId === otherPlayerId);
-                      if (otherPlayerWs && otherPlayerWs.readyState === 1) {
-                        otherPlayerWs.send(JSON.stringify({
-                          type: 'collision',
-                          collidedWith: playerId,
-                          reason: 'player_collision'
-                        }));
-                      }
-                    }
-                    
-                    // Convert dead player's segments into food particles
-                    const foodParticles = convertPlayerToFood(player, playerId);
-                    
-                    // Broadcast food particles to all players in the room
-                    const foodMessage = JSON.stringify({
-                      type: 'playerDeathFood',
-                      food: foodParticles,
-                      deadPlayerId: playerId
-                    });
-                    
-                    targetRoom.players.forEach((_, pid) => {
-                      const playerWs = Array.from(wss.clients).find((client: any) => client.playerId === pid);
-                      if (playerWs && playerWs.readyState === 1) {
-                        playerWs.send(foodMessage);
-                      }
-                    });
-                    
-                    console.log(`🍎 Generated ${foodParticles.length} food particles from dead player ${playerId}`);
-                    
-                    // Mark player as dead and remove from game
-                    player.isDead = true;
-                    player.segments = [];
-                    targetRoom.gameState.players.set(playerId, player);
-                    
-                    break;
-                  }
-                }
-                
-                if (collisionDetected) break;
-              }
-            }
-            
-            // Only update position if no collision detected
-            if (!collisionDetected) {
-              Object.assign(player, message.data);
-              targetRoom.gameState.players.set(playerId, player);
-            }
+            // Update player position
+            Object.assign(player, message.data);
+            targetRoom.gameState.players.set(playerId, player);
           }
         } else if (message.type === 'boost') {
           const player = targetRoom.players.get(playerId);
