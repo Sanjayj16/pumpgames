@@ -336,7 +336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Use static wallet address for all payments
-      const staticWalletAddress = '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv';
+      const staticWalletAddress = 'CmDrvqSNKMJmayfqxojaeaVNEBCzgtRPvqccqDxs2ski';
       const paymentSessionId = `${userId}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
       const createdAt = Date.now();
       const expiresAt = createdAt + (30 * 60 * 1000); // 30 minutes
@@ -426,7 +426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         success: true,
         amount: parseFloat(amount),
-        wallet: '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+        wallet: 'CmDrvqSNKMJmayfqxojaeaVNEBCzgtRPvqccqDxs2ski',
         result: result
       });
     } catch (error) {
@@ -533,7 +533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({
         success: true,
-        wallet: '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+        wallet: 'CmDrvqSNKMJmayfqxojaeaVNEBCzgtRPvqccqDxs2ski',
         totalSignatures: signatures.length,
         incomingTransactions: transactions
       });
