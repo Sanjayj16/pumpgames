@@ -1,8 +1,12 @@
 import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import bs58 from 'bs58';
 
-// Your main wallet private key (base58 encoded)
-const MAIN_WALLET_PRIVATE_KEY = 'PPDmTNT9eFTRfbEMr7ZxmAyJe2SZEVRSQv3ZQg4dMFxBGaqGMfnLKT5zrAjK6bwEjSinoK5o6gnENJpbqBpxFGv';
+// SECURITY: Load main wallet private key from environment variable
+const MAIN_WALLET_PRIVATE_KEY = process.env.MAIN_WALLET_PRIVATE_KEY;
+
+if (!MAIN_WALLET_PRIVATE_KEY) {
+  throw new Error('❌ MAIN_WALLET_PRIVATE_KEY environment variable is not set! Please add it to your .env file.');
+}
 
 // Solana RPC endpoints (avoiding blocked endpoints for production)
 const SOLANA_RPC_URLS = [
