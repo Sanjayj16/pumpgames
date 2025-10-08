@@ -16,12 +16,6 @@ interface SimpleUser {
   hasPlayedGame?: boolean; // Whether user has ever played a game (enables daily rewards)
   isClipper?: boolean; // Whether user is a clipper account (cannot withdraw)
   canWithdraw?: boolean; // Whether user can withdraw money
-  createdAt?: number; // Account creation timestamp
-  totalGamesPlayed?: number; // Total games played all time
-  totalWithdrawn?: number; // Total amount withdrawn
-  dailyWithdrawals?: Array<{ date: string; amount: number }>; // Daily withdrawal tracking
-  blockedReason?: string; // Reason for blocking user
-  blockedAt?: number; // Timestamp when user was blocked
   paymentSessions?: Array<{
     sessionId: string;
     amount: number;
@@ -33,17 +27,6 @@ interface SimpleUser {
     completedAt?: number;
     transactionHash?: string;
   }>; // Payment sessions for unique addresses
-  transactions?: Array<{
-    id: string;
-    type: 'topup' | 'withdrawal' | 'bet' | 'win' | 'loss';
-    amount: number;
-    netAmount: number;
-    fees?: any; // Fee breakdown object
-    timestamp: number;
-    method?: string;
-    currency?: string;
-    transactionHash?: string;
-  }>; // Transaction history with fee information
 }
 
 // Load users from file
