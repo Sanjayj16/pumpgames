@@ -1,8 +1,11 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { z } from "zod";
 // Removed database dependencies for simple auth
-import { registerUser, loginUser } from "./simple-auth";
+import { registerUser, loginUser, loadUsers, saveUsers } from "./simple-auth";
+import { storage } from "./storage";
+import { insertGameSchema } from "../shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -180,6 +183,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     maxPlayers: number;
     initialized: boolean;
     lastActivity: number;
+    gameMode?: string;
+  }
+
+  // Extended WebSocket type with custom properties
+  interface ExtendedWebSocket extends WebSocket {
+    playerId?: string;
+    roomId?: number;
+    region?: string;
   }
 
   const gameRooms = new Map<string, GameRoom>(); // Key format: "region:roomId"
@@ -285,9 +296,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
     
-    (ws as any).playerId = playerId;
-    (ws as any).roomId = targetRoom.id;
-    (ws as any).region = targetRoom.region;
+    const extWs = ws as ExtendedWebSocket;
+    extWs.playerId = playerId;
+    extWs.roomId = targetRoom.id;
+    extWs.region = targetRoom.region;
     const finalRoomKey = `${targetRoom.region}:${targetRoom.id}`;
     playerToRoom.set(playerId, finalRoomKey);
     
@@ -603,11 +615,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           
           let broadcastCount = 0;
-          wss.clients.forEach(client => {
+          wss.clients.forEach((client) => {
+            const extClient = client as ExtendedWebSocket;
             if (client.readyState === WebSocket.OPEN && 
-                client.roomId === room.id && 
-                client.region === room.region &&
-                client.playerId !== playerId) { // Don't send back to the sender
+                extClient.roomId === room.id && 
+                extClient.region === room.region &&
+                extClient.playerId !== playerId) { // Don't send back to the sender
               try {
                 client.send(boostFoodMessage);
                 broadcastCount++;
@@ -634,11 +647,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           
           let broadcastCount = 0;
-          wss.clients.forEach((client: any) => {
+          wss.clients.forEach((client) => {
+            const extClient = client as ExtendedWebSocket;
             if (client.readyState === WebSocket.OPEN && 
-                client.roomId === room.id && 
-                client.region === room.region &&
-                client.playerId !== playerId) { // Don't send back to the sender
+                extClient.roomId === room.id && 
+                extClient.region === room.region &&
+                extClient.playerId !== playerId) { // Don't send back to the sender
               try {
                 client.send(moneyCrateMessage);
                 broadcastCount++;
@@ -665,10 +679,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           
           let broadcastCount = 0;
-          wss.clients.forEach((client: any) => {
+          wss.clients.forEach((client) => {
+            const extClient = client as ExtendedWebSocket;
             if (client.readyState === WebSocket.OPEN && 
-                client.roomId === room.id && 
-                client.region === room.region) {
+                extClient.roomId === room.id && 
+                extClient.region === room.region) {
               try {
                 client.send(crateRemovalMessage);
                 broadcastCount++;
@@ -738,9 +753,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Find clients in this room and broadcast to them
         wss.clients.forEach(client => {
+          const extClient = client as ExtendedWebSocket;
           if (client.readyState === WebSocket.OPEN && 
-              (client as any).roomId === room.id && 
-              (client as any).region === room.region) {
+              extClient.roomId === room.id && 
+              extClient.region === room.region) {
             try {
               client.send(worldMessage);
             } catch (error) {
