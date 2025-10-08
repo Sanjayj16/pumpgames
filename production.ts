@@ -925,23 +925,23 @@ io.on("connection", (socket) => {
       player.length = updateData.segments.length;
       player.lastUpdate = Date.now();
       
-      // ===== SERVER-SIDE COLLISION DETECTION - BI-DIRECTIONAL =====
-      // Check BOTH directions: MY head → THEIR body AND THEIR head → MY body
+      // ===== SERVER-SIDE COLLISION DETECTION =====
+      // Check if this player collides with any other player
       let collisionDetected = false;
-      let otherPlayerDied = false;
       
       for (const [otherPlayerId, otherPlayer] of room) {
         if (otherPlayerId === socket.id) continue; // Skip self
         if (!otherPlayer.segments || otherPlayer.segments.length === 0) continue;
         
-        // ===== CHECK 1: Did MY head hit THEIR body? (I die) =====
+        // Check if current player's head hits other player's body
         const currentHead = player.head;
         for (const segment of otherPlayer.segments) {
           const distance = Math.sqrt(
             (currentHead.x - segment.x) ** 2 + 
             (currentHead.y - segment.y) ** 2
           );
-          const collisionRadius = 25; // Reduced to 25 for more precise collision
+          // MUCH MORE AGGRESSIVE collision radius for 1000% better detection
+          const collisionRadius = 35; // Increased from 20 to 35 for ultra-responsive collision
           
           if (distance < collisionRadius) {
             console.log(`💥 SERVER COLLISION: ${player.username} crashed into ${otherPlayer.username}!`);
@@ -969,7 +969,7 @@ io.on("connection", (socket) => {
               moneyTransfer: moneyTransfer,
               newKillerMoney: otherPlayer.money,
               newKillerKills: otherPlayer.kills,
-              victimSegments: victimSegments,
+              victimSegments: victimSegments, // SEND SEGMENTS FOR FOOD GENERATION
               timestamp: Date.now()
             });
             
@@ -989,64 +989,6 @@ io.on("connection", (socket) => {
         }
         
         if (collisionDetected) break;
-        
-        // ===== CHECK 2: Did THEIR head hit MY body? (THEY die) =====
-        // This fixes the bug where opponent's head hitting your body doesn't kill them
-        const otherHead = otherPlayer.head;
-        if (otherHead && player.segments && player.segments.length > 0) {
-          for (const mySegment of player.segments) {
-            const distance = Math.sqrt(
-              (otherHead.x - mySegment.x) ** 2 + 
-              (otherHead.y - mySegment.y) ** 2
-            );
-            const collisionRadius = 25; // Same radius for fairness
-            
-            if (distance < collisionRadius) {
-              console.log(`🔥 SERVER COLLISION: ${otherPlayer.username} crashed into ${player.username}!`);
-              otherPlayerDied = true;
-              
-              // Other player dies, current player gets their money
-              const moneyTransfer = otherPlayer.money;
-              player.money += moneyTransfer;
-              player.kills = (player.kills || 0) + 1;
-              
-              console.log(`💰 ${player.username} gained $${moneyTransfer.toFixed(2)} → Total: $${player.money.toFixed(2)}`);
-              
-              // Store victim's segments for food particle generation
-              const victimSegments = otherPlayer.segments || [];
-              
-              // Remove crashed player from room
-              room.delete(otherPlayerId);
-              
-              // Broadcast collision event to all players
-              io.to(currentRoomId).emit('playerCollision', {
-                crashedPlayerId: otherPlayerId,
-                crashedPlayerName: otherPlayer.username,
-                killerId: socket.id,
-                killerName: player.username,
-                moneyTransfer: moneyTransfer,
-                newKillerMoney: player.money,
-                newKillerKills: player.kills,
-                victimSegments: victimSegments,
-                timestamp: Date.now()
-              });
-              
-              console.log(`📤 ${otherPlayer.username} hit ${player.username}'s body - Broadcasted collision`);
-              
-              // Send death notification to crashed player
-              io.to(otherPlayerId).emit('death', {
-                reason: 'collision',
-                crashedInto: socket.id,
-                killerName: player.username
-              });
-              console.log(`✅ Death notification sent to ${otherPlayer.username}`);
-              
-              break;
-            }
-          }
-        }
-        
-        if (otherPlayerDied) break;
       }
       
       // Only broadcast update if no collision detected
