@@ -4,7 +4,6 @@ import { WebSocketServer, WebSocket } from "ws";
 import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeBet, winBet, loseBet, loadUsers, saveUsers, trackGamePlayed, migrateHasPlayedGame } from "./simple-auth";
 import { verifyPayment } from './payment-verification';
 import { generateUserPaymentAddress, checkPaymentToUserAddress, getMainWalletAddress, cleanupExpiredAddresses, getPrivateKeyForAddress, getAllGeneratedAddresses, getSOLPrice, withdrawSOL, getMainWalletBalance, connection } from './wallet-utils';
-import { calculateTopupFees, formatFeeBreakdown, validateTopupAmount, type FeeBreakdown } from './fee-calculator';
 
 // SECURITY: Enhanced security functions
 async function validateSessionToken(token: string, userId: string): Promise<boolean> {
@@ -249,7 +248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add funds to user wallet endpoint (with fee calculation)
+  // Add funds to user wallet endpoint
   app.post("/api/wallet/add-funds", (req, res) => {
     try {
       const { userId, amount } = req.body;
@@ -258,10 +257,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "User ID and amount required" });
       }
 
-      // Validate amount with fees
-      const validation = validateTopupAmount(amount);
-      if (!validation.valid) {
-        return res.status(400).json({ message: validation.reason });
+      if (amount <= 0) {
+        return res.status(400).json({ message: "Amount must be greater than 0" });
+      }
+
+      if (amount > 10000) {
+        return res.status(400).json({ message: "Maximum top-up amount is $10,000" });
       }
 
       const users = loadUsers();
@@ -271,40 +272,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Calculate fees
-      const feeBreakdown = calculateTopupFees(amount);
-      
-      // Log fee breakdown
-      console.log(`💰 Topup initiated for user ${userId}:`);
-      console.log(formatFeeBreakdown(feeBreakdown));
-
-      // Add net amount (after fees) to user balance
-      users[userIndex].balance += feeBreakdown.netAmount;
-      
-      // Store transaction with fee details
-      if (!users[userIndex].transactions) {
-        users[userIndex].transactions = [];
-      }
-      
-      users[userIndex].transactions.push({
-        id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        type: 'topup',
-        amount: amount,
-        netAmount: feeBreakdown.netAmount,
-        fees: feeBreakdown,
-        timestamp: Date.now(),
-        method: 'manual'
-      });
-      
+      // Add funds to user balance
+      users[userIndex].balance += amount;
       saveUsers(users);
       
       res.json({ 
         success: true,
-        message: `Successfully added $${feeBreakdown.netAmount.toFixed(2)} to your wallet`,
-        topupAmount: amount,
-        feesCharged: feeBreakdown.totalFees,
-        netCredited: feeBreakdown.netAmount,
-        feeBreakdown: feeBreakdown,
+        message: `Successfully added $${amount.toFixed(2)} to your wallet`,
         newBalance: users[userIndex].balance,
         user: { ...users[userIndex], password: '' }
       });
@@ -338,83 +312,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Get wallet error:', error);
       res.status(500).json({ message: "Failed to get wallet info" });
-    }
-  });
-
-  // Get user transaction history with fees
-  app.get("/api/wallet/:userId/transactions", (req, res) => {
-    try {
-      const { userId } = req.params;
-      const limit = parseInt(req.query.limit as string) || 50;
-
-      if (!userId) {
-        return res.status(400).json({ message: "User ID required" });
-      }
-
-      const users = loadUsers();
-      const user = users.find(u => u.id === userId);
-      
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const transactions = (user.transactions || [])
-        .sort((a: any, b: any) => b.timestamp - a.timestamp)
-        .slice(0, limit);
-
-      res.json({ 
-        success: true,
-        transactions: transactions,
-        total: (user.transactions || []).length
-      });
-    } catch (error) {
-      console.error('Get transactions error:', error);
-      res.status(500).json({ message: "Failed to get transaction history" });
-    }
-  });
-
-  // Fee estimation endpoint
-  app.post("/api/wallet/estimate-fees", (req, res) => {
-    try {
-      const { amount } = req.body;
-
-      if (!amount || amount <= 0) {
-        return res.status(400).json({ message: "Valid amount required" });
-      }
-
-      // Validate amount
-      const validation = validateTopupAmount(amount);
-      if (!validation.valid) {
-        return res.status(400).json({ 
-          message: validation.reason,
-          valid: false
-        });
-      }
-
-      // Calculate fee breakdown
-      const feeBreakdown = calculateTopupFees(amount);
-
-      res.json({
-        success: true,
-        valid: true,
-        topupAmount: amount,
-        fees: {
-          platformFee: feeBreakdown.platformFee,
-          processingFee: feeBreakdown.processingFee,
-          serviceFee: feeBreakdown.serviceFee,
-          networkFee: feeBreakdown.networkFee,
-          regulatoryFee: feeBreakdown.regulatoryFee,
-          securityFee: feeBreakdown.securityFee,
-          liquidityFee: feeBreakdown.liquidityFee,
-          totalFees: feeBreakdown.totalFees,
-          feePercentage: feeBreakdown.feePercentage
-        },
-        netAmount: feeBreakdown.netAmount,
-        summary: `Topup $${amount.toFixed(2)} → Fees $${feeBreakdown.totalFees.toFixed(2)} (${feeBreakdown.feePercentage.toFixed(2)}%) → You receive $${feeBreakdown.netAmount.toFixed(2)}`
-      });
-    } catch (error) {
-      console.error('Fee estimation error:', error);
-      res.status(500).json({ message: "Failed to estimate fees" });
     }
   });
 
@@ -1306,36 +1203,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const userIndex = users.findIndex(u => u.id === userId);
         
         if (userIndex >= 0) {
-          const depositAmount = verificationResult.actualAmount || paymentSession.amount;
+          users[userIndex].balance = (users[userIndex].balance || 0) + paymentSession.amount;
           
-          // Calculate fees on the deposited amount
-          const feeBreakdown = calculateTopupFees(depositAmount);
-          
-          // Log detailed fee breakdown
-          console.log(`💰 Payment verified for user ${userId}:`);
-          console.log(formatFeeBreakdown(feeBreakdown));
-          
-          // Credit net amount (after fees) to user balance
-          users[userIndex].balance = (users[userIndex].balance || 0) + feeBreakdown.netAmount;
-          
-          // Store transaction with fee details
-          if (!users[userIndex].transactions) {
-            users[userIndex].transactions = [];
-          }
-          
-          users[userIndex].transactions.push({
-            id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            type: 'topup',
-            amount: depositAmount,
-            netAmount: feeBreakdown.netAmount,
-            fees: feeBreakdown,
-            timestamp: Date.now(),
-            method: 'crypto',
-            currency: 'SOL',
-            transactionHash: verificationResult.transactionHash
-          });
-          
-          // Mark payment session as completed with fee info
+          // Mark payment session as completed
           if (users[userIndex].paymentSessions) {
             const sessionIndex = users[userIndex].paymentSessions.findIndex(
               (session: any) => session.sessionId === paymentSessionId
@@ -1344,29 +1214,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
               users[userIndex].paymentSessions[sessionIndex].status = 'completed';
               users[userIndex].paymentSessions[sessionIndex].completedAt = Date.now();
               users[userIndex].paymentSessions[sessionIndex].transactionHash = verificationResult.transactionHash;
-              (users[userIndex].paymentSessions[sessionIndex] as any).verifiedAmount = depositAmount;
-              (users[userIndex].paymentSessions[sessionIndex] as any).feeBreakdown = feeBreakdown;
-              (users[userIndex].paymentSessions[sessionIndex] as any).netCredited = feeBreakdown.netAmount;
+              (users[userIndex].paymentSessions[sessionIndex] as any).verifiedAmount = verificationResult.actualAmount || paymentSession.amount;
             }
           }
           
           saveUsers(users);
           
-          console.log(`✅ Payment verified successfully!`);
-          console.log(`💵 Deposit: $${depositAmount.toFixed(2)}`);
-          console.log(`💸 Total Fees: $${feeBreakdown.totalFees.toFixed(2)} (${feeBreakdown.feePercentage.toFixed(2)}%)`);
-          console.log(`💰 Net Credited: $${feeBreakdown.netAmount.toFixed(2)}`);
-          console.log(`📊 New Balance: $${users[userIndex].balance.toFixed(2)}`);
+          console.log(`✅ Payment verified successfully! User ${userId} balance updated to $${users[userIndex].balance.toFixed(2)}`);
           console.log(`🔗 Transaction hash: ${verificationResult.transactionHash}`);
           
           res.json({
             verified: true,
             transactionHash: verificationResult.transactionHash,
             currency: 'SOL',
-            depositAmount: depositAmount,
-            feesCharged: feeBreakdown.totalFees,
-            netCredited: feeBreakdown.netAmount,
-            feeBreakdown: feeBreakdown,
+            amount: verificationResult.actualAmount || paymentSession.amount,
             newBalance: users[userIndex].balance
           });
         } else {
