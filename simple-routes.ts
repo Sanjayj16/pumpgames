@@ -5,6 +5,11 @@ import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeB
 import { verifyPayment } from './payment-verification';
 import { generateUserPaymentAddress, checkPaymentToUserAddress, getMainWalletAddress, cleanupExpiredAddresses, getPrivateKeyForAddress, getAllGeneratedAddresses, getSOLPrice, withdrawSOL, getMainWalletBalance, connection } from './wallet-utils';
 
+// Global type declarations
+declare global {
+  var rateLimitStore: Map<string, number[]> | undefined;
+}
+
 // SECURITY: Enhanced security functions
 async function validateSessionToken(token: string, userId: string): Promise<boolean> {
   // In production, implement proper session validation
@@ -518,9 +523,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (balanceChange > 0) {
                   transactions.push({
                     signature: sig.signature.substring(0, 16) + '...',
-                    timestamp: new Date(sig.blockTime * 1000).toISOString(),
+                    timestamp: sig.blockTime ? new Date(sig.blockTime * 1000).toISOString() : 'Unknown',
                     solAmount: balanceChange.toFixed(6),
-                    blockTime: sig.blockTime
+                    blockTime: sig.blockTime || 0
                   });
                 }
               }
@@ -549,9 +554,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
     const userAgent = req.get('User-Agent') || 'unknown';
     const referer = req.get('Referer') || 'unknown';
+    let userId = ''; // Declare in outer scope for catch block
     
     try {
-      const { userId, walletAddress, amount, sessionToken, captchaToken } = req.body;
+      const requestData = req.body;
+      userId = requestData.userId;
+      const { walletAddress, amount, sessionToken, captchaToken } = requestData;
 
       // SECURITY: Log all withdrawal attempts with full details
       console.log(`🔒 WITHDRAWAL ATTEMPT - IP: ${clientIP}, User: ${userId}, Amount: ${amount}, Address: ${walletAddress}, UA: ${userAgent}, Referer: ${referer}`);
@@ -665,6 +673,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Get withdrawal amount and SOL price
+      const withdrawAmount = parseFloat(amount);
+      const solPrice = await getSOLPrice();
+
+      // Validate amount is a number
+      if (isNaN(withdrawAmount) || withdrawAmount <= 0) {
+        console.log(`❌ INVALID AMOUNT - User: ${userId}, Amount: ${amount}, IP: ${clientIP}`);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid withdrawal amount'
+        });
+      }
+
       // SECURITY: Enhanced amount validation
       const amountValidation = isValidWithdrawalAmount(withdrawAmount, solPrice);
       if (!amountValidation.valid) {
@@ -728,8 +749,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // SECURITY: Check for suspicious user behavior
-      if (user.totalGamesPlayed < 5) {
-        console.log(`🚨 INSUFFICIENT GAME ACTIVITY - User: ${userId}, Games: ${user.totalGamesPlayed}, IP: ${clientIP}`);
+      if ((user.totalGamesPlayed || 0) < 5) {
+        console.log(`🚨 INSUFFICIENT GAME ACTIVITY - User: ${userId}, Games: ${user.totalGamesPlayed || 0}, IP: ${clientIP}`);
         return res.status(403).json({
           success: false,
           message: 'Must play at least 5 games before withdrawing'
@@ -904,7 +925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const user of users) {
         const suspiciousFlags = [];
         
-        if (user.totalWithdrawn > 1000) {
+        if ((user.totalWithdrawn || 0) > 1000) {
           suspiciousFlags.push('High total withdrawals');
         }
         
@@ -916,7 +937,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        if (user.totalGamesPlayed < 10 && user.totalWithdrawn > 100) {
+        if ((user.totalGamesPlayed || 0) < 10 && (user.totalWithdrawn || 0) > 100) {
           suspiciousFlags.push('Low game activity, high withdrawals');
         }
         
@@ -1476,7 +1497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Get all current player positions
     const existingPlayers = Array.from(room.gameState.players.values()).filter((p: any) => 
       p.segments && p.segments.length > 0
-    );
+    ) as any[];
     
     // Function to check if a position is safe
     const isPositionSafe = (x: number, y: number): boolean => {
@@ -1605,7 +1626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     server: httpServer,
     path: '/ws',
     perMessageDeflate: false, // Disable compression for better compatibility
-    verifyClient: (info) => {
+    verifyClient: (info: any) => {
       console.log('🔍 WebSocket client verification:', {
         origin: info.origin,
         secure: info.secure,
@@ -1781,7 +1802,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         players: playersToSend
       });
       
-      targetRoom.players.forEach((_, pid) => {
+      targetRoom.players.forEach((_: any, pid: string) => {
         const playerWs = Array.from(wss.clients).find((client: any) => client.playerId === pid);
         if (playerWs && playerWs.readyState === 1) {
           playerWs.send(message);
@@ -1839,7 +1860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`🎮 Friend mode game ended in room ${targetRoom.region}:${targetRoom.id}`);
             
             // Mark all players in the room as dead
-            targetRoom.players.forEach((player, id) => {
+            targetRoom.players.forEach((player: any, id: string) => {
               player.isDead = true;
               player.gameOver = true;
               targetRoom.gameState.players.set(id, player);
@@ -1983,7 +2004,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           players: players
         });
         
-        room.players.forEach((_, pid: string) => {
+        room.players.forEach((_: any, pid: string) => {
           const playerWs = Array.from(wss.clients).find((client: any) => client.playerId === pid);
           if (playerWs && playerWs.readyState === 1) {
             playerWs.send(message);
@@ -2024,7 +2045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           players: playersToSend
         });
         
-        room.players.forEach((_, playerId: string) => {
+        room.players.forEach((_: any, playerId: string) => {
           const playerWs = Array.from(wss.clients).find((client: any) => client.playerId === playerId);
           if (playerWs && playerWs.readyState === 1) {
             playerWs.send(message);
