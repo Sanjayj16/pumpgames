@@ -10,12 +10,18 @@ interface SimpleUser {
   balance: number;
   holdBalance: number; // Money on hold from active bets
   id: string;
+  createdAt?: number; // Timestamp when account was created
   lastDailyRewardClaim?: string; // ISO date string
   gamesPlayedToday?: number; // Number of games played today
   lastGameDate?: string; // Date of last game played (ISO string)
   hasPlayedGame?: boolean; // Whether user has ever played a game (enables daily rewards)
+  totalGamesPlayed?: number; // Total number of games played
   isClipper?: boolean; // Whether user is a clipper account (cannot withdraw)
   canWithdraw?: boolean; // Whether user can withdraw money
+  dailyWithdrawals?: Record<string, number>; // Track daily withdrawal amounts
+  totalWithdrawn?: number; // Total amount withdrawn
+  blockedReason?: string; // Reason for withdrawal block
+  blockedAt?: number; // Timestamp when blocked
   paymentSessions?: Array<{
     sessionId: string;
     amount: number;
@@ -77,7 +83,10 @@ export function registerUser(username: string, password: string): { success: boo
     username,
     password, // Plain text for simplicity
     balance: 0.00, // Starting balance is $0 - users must top up
-    holdBalance: 0.00 // Starting hold balance is $0
+    holdBalance: 0.00, // Starting hold balance is $0
+    createdAt: Date.now(), // Account creation timestamp
+    totalGamesPlayed: 0, // Initialize games played counter
+    totalWithdrawn: 0 // Initialize total withdrawn
   };
 
   users.push(newUser);
