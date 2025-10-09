@@ -936,6 +936,10 @@ io.on("connection", (socket) => {
         
         const currentHead = player.head;
         
+        // Get actual segment radii for proper edge collision detection
+        const currentSegmentRadius = player.segmentRadius || 10;
+        const otherSegmentRadius = otherPlayer.segmentRadius || 10;
+        
         // Check if current player's head hits ANY part of other player's snake
         // (including their head or body - doesn't matter)
         for (const segment of otherPlayer.segments) {
@@ -943,11 +947,14 @@ io.on("connection", (socket) => {
             (currentHead.x - segment.x) ** 2 + 
             (currentHead.y - segment.y) ** 2
           );
-          const collisionRadius = 35; // Collision detection radius
+          
+          // Collision happens at the EDGE - sum of both radii
+          // This prevents snake from going inside body before dying
+          const collisionRadius = currentSegmentRadius + otherSegmentRadius;
           
           if (distance < collisionRadius) {
-            console.log(`💥 COLLISION: ${player.username}'s head hit ${otherPlayer.username}'s snake!`);
-            console.log(`💀 ${player.username} dies (their head made contact)`);
+            console.log(`💥 COLLISION: ${player.username}'s head hit ${otherPlayer.username}'s snake at edge!`);
+            console.log(`💀 ${player.username} dies (touched border/skin edge)`);
             collisionDetected = true;
             
             // Current player dies, other player gets their money
