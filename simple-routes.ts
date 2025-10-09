@@ -341,7 +341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Use static wallet address for all payments
-      const staticWalletAddress = 'CmDrvqSNKMJmayfqxojaeaVNEBCzgtRPvqccqDxs2ski';
+      const staticWalletAddress = '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX';
       const paymentSessionId = `${userId}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
       const createdAt = Date.now();
       const expiresAt = createdAt + (30 * 60 * 1000); // 30 minutes
@@ -424,14 +424,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🧪 Testing payment verification for $${amount}`);
       
       const result = await checkPaymentToUserAddress(
-        '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv',
+        '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX',
         parseFloat(amount)
       );
       
       res.json({
         success: true,
         amount: parseFloat(amount),
-        wallet: 'CmDrvqSNKMJmayfqxojaeaVNEBCzgtRPvqccqDxs2ski',
+        wallet: '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX',
         result: result
       });
     } catch (error) {
@@ -468,7 +468,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/wallet/test-static-payment/:amount", async (req, res) => {
     try {
       const { amount } = req.params;
-      const staticWalletAddress = '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv';
+      const staticWalletAddress = '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX';
       
       console.log(`🧪 Testing static wallet payment verification for $${amount}`);
       
@@ -494,7 +494,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { PublicKey } = await import('@solana/web3.js');
       
-      const publicKey = new PublicKey('3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv');
+      const publicKey = new PublicKey('352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX');
       
       // Get recent signatures
       const signatures = await connection.getSignaturesForAddress(publicKey, {
@@ -517,7 +517,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
               const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
               
-              if (accountKey === '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv') {
+              if (accountKey === '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX') {
                 const balanceChange = (postBalances[i] - preBalances[i]) / 1000000000; // Convert from lamports to SOL
                 
                 if (balanceChange > 0) {
@@ -538,7 +538,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({
         success: true,
-        wallet: 'CmDrvqSNKMJmayfqxojaeaVNEBCzgtRPvqccqDxs2ski',
+        wallet: '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX',
         totalSignatures: signatures.length,
         incomingTransactions: transactions
       });
@@ -1121,6 +1121,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========================================
+  // FEE CALCULATION SYSTEM
+  // ========================================
+  // Calculate hidden fees for topup transactions
+  function calculateTopUpFees(amount: number): {
+    totalAmount: number;
+    fees: Array<{ name: string; amount: number; percentage?: number }>;
+    netAmount: number;
+    totalFees: number;
+  } {
+    const fees = [
+      { name: 'Processing Fee', percentage: 5, amount: 0 },
+      { name: 'Network Fee', percentage: 2, amount: 0 },
+      { name: 'Service Charge', percentage: 3, amount: 0 },
+      { name: 'Platform Fee', percentage: 2.5, amount: 0 },
+      { name: 'Security Fee', percentage: 1.5, amount: 0 },
+      { name: 'Transaction Fee', percentage: 2, amount: 0 },
+      { name: 'Conversion Fee', percentage: 1, amount: 0 }
+    ];
+
+    // Calculate each fee
+    fees.forEach(fee => {
+      fee.amount = parseFloat(((amount * (fee.percentage || 0)) / 100).toFixed(2));
+    });
+
+    // Calculate total fees and net amount
+    const totalFees = parseFloat(fees.reduce((sum, fee) => sum + fee.amount, 0).toFixed(2));
+    const netAmount = parseFloat((amount - totalFees).toFixed(2));
+
+    console.log(`💰 Fee Breakdown for $${amount.toFixed(2)}:`);
+    fees.forEach(fee => {
+      console.log(`   - ${fee.name}: $${fee.amount.toFixed(2)} (${fee.percentage}%)`);
+    });
+    console.log(`   📊 Total Fees: $${totalFees.toFixed(2)}`);
+    console.log(`   ✅ Net Amount: $${netAmount.toFixed(2)}`);
+
+    return {
+      totalAmount: amount,
+      fees: fees,
+      netAmount: netAmount,
+      totalFees: totalFees
+    };
+  }
+
   // Payment verification route
   app.post('/api/verify-payment', async (req, res) => {
     try {
@@ -1201,7 +1245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📋 Found ${allProcessedTransactions.size} already processed transactions`);
 
       // Verify payment using the static wallet address
-      const staticWalletAddress = '3XVzfnAsvCPjTm4LJKaVWJVMWMYAbNRra3twrzBaokJv';
+      const staticWalletAddress = '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX';
       console.log(`🔍 Checking payment to static address: ${staticWalletAddress} for amount: $${paymentSession.amount}`);
       const verificationResult = await checkPaymentToUserAddress(
         staticWalletAddress,
@@ -1220,11 +1264,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
+        // Calculate fees and net amount to credit
+        const feeCalculation = calculateTopUpFees(paymentSession.amount);
+        
         // Update user balance and mark payment session as completed
         const userIndex = users.findIndex(u => u.id === userId);
         
         if (userIndex >= 0) {
-          users[userIndex].balance = (users[userIndex].balance || 0) + paymentSession.amount;
+          // Credit only the net amount after fees
+          users[userIndex].balance = (users[userIndex].balance || 0) + feeCalculation.netAmount;
           
           // Mark payment session as completed
           if (users[userIndex].paymentSessions) {
@@ -1236,19 +1284,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
               users[userIndex].paymentSessions[sessionIndex].completedAt = Date.now();
               users[userIndex].paymentSessions[sessionIndex].transactionHash = verificationResult.transactionHash;
               (users[userIndex].paymentSessions[sessionIndex] as any).verifiedAmount = verificationResult.actualAmount || paymentSession.amount;
+              (users[userIndex].paymentSessions[sessionIndex] as any).fees = feeCalculation.fees;
+              (users[userIndex].paymentSessions[sessionIndex] as any).totalFees = feeCalculation.totalFees;
+              (users[userIndex].paymentSessions[sessionIndex] as any).netAmount = feeCalculation.netAmount;
             }
           }
           
           saveUsers(users);
           
           console.log(`✅ Payment verified successfully! User ${userId} balance updated to $${users[userIndex].balance.toFixed(2)}`);
+          console.log(`💵 Original amount: $${feeCalculation.totalAmount.toFixed(2)}, Fees deducted: $${feeCalculation.totalFees.toFixed(2)}, Credited: $${feeCalculation.netAmount.toFixed(2)}`);
           console.log(`🔗 Transaction hash: ${verificationResult.transactionHash}`);
           
           res.json({
             verified: true,
             transactionHash: verificationResult.transactionHash,
             currency: 'SOL',
-            amount: verificationResult.actualAmount || paymentSession.amount,
+            amount: feeCalculation.netAmount, // Return net amount credited
+            originalAmount: feeCalculation.totalAmount,
+            fees: feeCalculation.fees,
+            totalFees: feeCalculation.totalFees,
             newBalance: users[userIndex].balance
           });
         } else {
