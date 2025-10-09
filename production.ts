@@ -933,18 +933,87 @@ io.on("connection", (socket) => {
         if (otherPlayerId === socket.id) continue; // Skip self
         if (!otherPlayer.segments || otherPlayer.segments.length === 0) continue;
         
-        // Check if current player's head hits other player's body
         const currentHead = player.head;
-        for (const segment of otherPlayer.segments) {
+        const otherHead = otherPlayer.head;
+        
+        // ===== CHECK HEAD-TO-HEAD COLLISION FIRST =====
+        // In head-to-head collision, the player with LESS mass dies
+        // This prevents the issue where the wrong player dies due to timing
+        if (otherHead) {
+          const headToHeadDistance = Math.sqrt(
+            (currentHead.x - otherHead.x) ** 2 + 
+            (currentHead.y - otherHead.y) ** 2
+          );
+          const headCollisionRadius = 25; // Slightly smaller for head-to-head
+          
+          if (headToHeadDistance < headCollisionRadius) {
+            // HEAD-TO-HEAD COLLISION: Compare masses
+            const currentMass = player.totalMass || 10;
+            const otherMass = otherPlayer.totalMass || 10;
+            
+            // Only process if current player has LESS mass (they die)
+            // If equal mass or current has more, the OTHER player's update will handle it
+            if (currentMass <= otherMass) {
+              console.log(`💥 HEAD-TO-HEAD COLLISION: ${player.username} (mass: ${currentMass}) vs ${otherPlayer.username} (mass: ${otherMass})`);
+              console.log(`💀 ${player.username} dies (smaller/equal mass)`);
+              collisionDetected = true;
+              
+              // Current player dies, other player gets their money
+              const moneyTransfer = player.money;
+              otherPlayer.money += moneyTransfer;
+              otherPlayer.kills = (otherPlayer.kills || 0) + 1;
+              
+              console.log(`💰 ${otherPlayer.username} gained $${moneyTransfer.toFixed(2)} → Total: $${otherPlayer.money.toFixed(2)}`);
+              
+              // Store victim's segments for food particle generation
+              const victimSegments = player.segments || [];
+              
+              // Remove crashed player from room
+              room.delete(socket.id);
+              
+              // Broadcast collision event to all players WITH VICTIM SEGMENTS
+              io.to(currentRoomId).emit('playerCollision', {
+                crashedPlayerId: socket.id,
+                crashedPlayerName: player.username,
+                killerId: otherPlayerId,
+                killerName: otherPlayer.username,
+                moneyTransfer: moneyTransfer,
+                newKillerMoney: otherPlayer.money,
+                newKillerKills: otherPlayer.kills,
+                victimSegments: victimSegments,
+                timestamp: Date.now()
+              });
+              
+              console.log(`📤 Broadcasted head-to-head collision with ${victimSegments.length} victim segments`);
+              
+              // Send death notification to crashed player
+              console.log(`💀 Sending death notification to ${socket.id} (${player.username})`);
+              socket.emit('death', {
+                reason: 'collision',
+                crashedInto: otherPlayerId,
+                killerName: otherPlayer.username
+              });
+              console.log(`✅ Death notification sent to ${player.username}`);
+              
+              break;
+            }
+            // If current player has more mass, skip - the other player's update will handle their death
+            continue;
+          }
+        }
+        
+        // ===== CHECK HEAD-TO-BODY COLLISION =====
+        // Check if current player's head hits other player's body segments (NOT head)
+        for (let i = 1; i < otherPlayer.segments.length; i++) { // Start at 1 to skip head
+          const segment = otherPlayer.segments[i];
           const distance = Math.sqrt(
             (currentHead.x - segment.x) ** 2 + 
             (currentHead.y - segment.y) ** 2
           );
-          // MUCH MORE AGGRESSIVE collision radius for 1000% better detection
-          const collisionRadius = 35; // Increased from 20 to 35 for ultra-responsive collision
+          const collisionRadius = 35; // Collision radius for body segments
           
           if (distance < collisionRadius) {
-            console.log(`💥 SERVER COLLISION: ${player.username} crashed into ${otherPlayer.username}!`);
+            console.log(`💥 HEAD-TO-BODY COLLISION: ${player.username} crashed into ${otherPlayer.username}'s body!`);
             collisionDetected = true;
             
             // Current player dies, other player gets their money
@@ -969,7 +1038,7 @@ io.on("connection", (socket) => {
               moneyTransfer: moneyTransfer,
               newKillerMoney: otherPlayer.money,
               newKillerKills: otherPlayer.kills,
-              victimSegments: victimSegments, // SEND SEGMENTS FOR FOOD GENERATION
+              victimSegments: victimSegments,
               timestamp: Date.now()
             });
             
