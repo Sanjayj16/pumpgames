@@ -706,8 +706,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Check minimum withdrawal ($50 USD)
-      const minimumUSD = 50;
+      // Check minimum withdrawal ($20 USD)
+      const minimumUSD = 20;
       if (amountInUSD < minimumUSD) {
         console.log(`❌ MINIMUM WITHDRAWAL NOT MET - User: ${userId}, Amount: $${amountInUSD}, IP: ${clientIP}`);
         return res.status(400).json({
