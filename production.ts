@@ -939,22 +939,25 @@ io.on("connection", (socket) => {
         // Get actual segment radii for proper edge collision detection
         const currentSegmentRadius = player.segmentRadius || 10;
         const otherSegmentRadius = otherPlayer.segmentRadius || 10;
+        const collisionRadius = currentSegmentRadius + otherSegmentRadius;
         
-        // Check if current player's head hits ANY part of other player's snake
-        // (including their head or body - doesn't matter)
+        // Border collision tolerance - only detect when touching the edge, not when fully inside
+        // The snake dies only when within 90-100% of the collision distance (at the border)
+        const borderTolerance = collisionRadius * 0.90; // 10% tolerance for border detection
+        
+        // Check if current player's head hits the BORDER of other player's snake
+        // Snake can go slightly inside without dying, only dies when touching the border line
         for (const segment of otherPlayer.segments) {
           const distance = Math.sqrt(
             (currentHead.x - segment.x) ** 2 + 
             (currentHead.y - segment.y) ** 2
           );
           
-          // Collision happens at the EDGE - sum of both radii
-          // This prevents snake from going inside body before dying
-          const collisionRadius = currentSegmentRadius + otherSegmentRadius;
-          
-          if (distance < collisionRadius) {
-            console.log(`💥 COLLISION: ${player.username}'s head hit ${otherPlayer.username}'s snake at edge!`);
-            console.log(`💀 ${player.username} dies (touched border/skin edge)`);
+          // Collision happens ONLY at the BORDER/EDGE - not when fully inside
+          // Distance must be close to the collision radius (at the border line)
+          if (distance <= collisionRadius && distance >= borderTolerance) {
+            console.log(`💥 COLLISION: ${player.username}'s head hit ${otherPlayer.username}'s snake border!`);
+            console.log(`💀 ${player.username} dies (touched border/edge line at distance: ${distance.toFixed(2)}/${collisionRadius.toFixed(2)})`);
             collisionDetected = true;
             
             // Current player dies, other player gets their money
