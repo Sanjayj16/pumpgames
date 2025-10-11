@@ -397,15 +397,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (!otherPlayerHead) continue;
               
               // ===== CHECK 1: Did current player crash into other player? (current player dies) =====
+              const collisionRadius = data.segmentRadius + (otherPlayer.segmentRadius || 10);
+              const borderTolerance = collisionRadius * 0.90; // 10% tolerance for border detection
+              
               for (const segment of otherPlayer.segments) {
                 const dist = Math.sqrt(
                   (currentPlayerHead.x - segment.x) ** 2 + 
                   (currentPlayerHead.y - segment.y) ** 2
                 );
-                const collisionRadius = data.segmentRadius + (otherPlayer.segmentRadius || 10);
                 
-                if (dist < collisionRadius) {
-                  console.log(`💀 SERVER Room ${room.region}/${room.id}: Player ${playerId} crashed into ${otherPlayerId}! (Current player dies)`);
+                // Collision happens ONLY at the BORDER/EDGE - not when fully inside
+                if (dist <= collisionRadius && dist >= borderTolerance) {
+                  console.log(`💀 SERVER Room ${room.region}/${room.id}: Player ${playerId} crashed into ${otherPlayerId} border! (Current player dies, distance: ${dist.toFixed(2)}/${collisionRadius.toFixed(2)})`);
                   collisionDetected = true;
                   
                   // Get crashed player data for money crate calculation
