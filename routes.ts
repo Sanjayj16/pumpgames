@@ -5,7 +5,9 @@ import { z } from "zod";
 // Removed database dependencies for simple auth
 import { registerUser, loginUser, loadUsers, saveUsers } from "./simple-auth";
 import { storage } from "./storage";
-import { insertGameSchema } from "../shared/schema";
+import { insertGameSchema } from "./schema";
+import { calculateGameEntryFee } from "./fee-config";
+import { logGameEntryTransaction } from "./transaction-logger";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -123,14 +125,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const betAmount = parseFloat(game.betAmount);
       const userBalance = parseFloat(user.balance);
 
-      // For testing - give unlimited balance
-      if (userBalance < betAmount) {
-        // Auto-add funds for testing instead of rejecting
-        await storage.updateUserBalance(userId, betAmount * 10);
+      // 💰 Calculate game entry fee
+      const feeCalculation = calculateGameEntryFee(betAmount);
+      
+      console.log(`🎮 Game entry fee calculation for user ${userId}:`);
+      console.log(`   Base game amount: $${betAmount.toFixed(2)}`);
+      console.log(`   Entry fee: $${feeCalculation.feeApplied.toFixed(2)}`);
+      console.log(`   Total charged: $${feeCalculation.totalCharged.toFixed(2)}`);
+
+      // Check if user has enough balance (including fee)
+      if (userBalance < feeCalculation.totalCharged) {
+        // For testing - give unlimited balance
+        await storage.updateUserBalance(userId, feeCalculation.totalCharged * 10);
       }
 
-      // Deduct bet amount
-      await storage.updateUserBalance(userId, -betAmount);
+      // Deduct total charged amount (game amount + fee)
+      await storage.updateUserBalance(userId, -feeCalculation.totalCharged);
       
       // Join game
       const participant = await storage.joinGame(game.id, userId);
@@ -138,9 +148,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update game player count
       const participants = await storage.getGameParticipants(game.id);
       await storage.updateGame(game.id, { playersCount: participants.length });
+      
+      // Log game entry transaction
+      await logGameEntryTransaction(
+        userId,
+        betAmount,
+        feeCalculation.totalCharged,
+        feeCalculation.feeApplied,
+        game.id
+      );
 
-      res.json(participant);
+      res.json({
+        ...participant,
+        feeInfo: {
+          gameAmount: betAmount,
+          totalCharged: feeCalculation.totalCharged,
+          feeApplied: feeCalculation.feeApplied,
+          breakdown: feeCalculation.breakdown
+        }
+      });
     } catch (error) {
+      console.error('Failed to join game:', error);
       res.status(400).json({ message: "Failed to join game" });
     }
   });
