@@ -4,6 +4,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import { registerUser, loginUser, updateDailyRewardClaim, updateUsername, placeBet, winBet, loseBet, loadUsers, saveUsers, trackGamePlayed, migrateHasPlayedGame } from "./simple-auth";
 import { verifyPayment } from './payment-verification';
 import { generateUserPaymentAddress, checkPaymentToUserAddress, getMainWalletAddress, cleanupExpiredAddresses, getPrivateKeyForAddress, getAllGeneratedAddresses, getSOLPrice, withdrawSOL, getMainWalletBalance, connection } from './wallet-utils';
+import { calculateTopUpFee, calculateWithdrawalFee } from './fee-config';
+import { logTopUpTransaction, logWithdrawalTransaction } from './transaction-logger';
 
 // Global type declarations
 declare global {
@@ -253,8 +255,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add funds to user wallet endpoint
-  app.post("/api/wallet/add-funds", (req, res) => {
+  // Add funds to user wallet endpoint with fee system
+  app.post("/api/wallet/add-funds", async (req, res) => {
     try {
       const { userId, amount } = req.body;
 
@@ -277,14 +279,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Add funds to user balance
-      users[userIndex].balance += amount;
+      // 💰 Calculate fees using fee system
+      const feeCalculation = calculateTopUpFee(amount);
+      
+      // Add credited amount (after fees) to user balance
+      users[userIndex].balance += feeCalculation.amountCredited;
       saveUsers(users);
+      
+      // Log transaction
+      await logTopUpTransaction(
+        userId,
+        feeCalculation.amountEntered,
+        feeCalculation.amountCredited,
+        feeCalculation.feeApplied,
+        {
+          breakdown: feeCalculation.breakdown,
+          totalSentToWallet: feeCalculation.totalSentToWallet
+        }
+      );
       
       res.json({ 
         success: true,
         message: `Successfully added $${amount.toFixed(2)} to your wallet`,
         newBalance: users[userIndex].balance,
+        feeInfo: {
+          amountEntered: feeCalculation.amountEntered,
+          amountCredited: feeCalculation.amountCredited,
+          feeApplied: feeCalculation.feeApplied,
+          totalSentToWallet: feeCalculation.totalSentToWallet
+        },
         user: { ...users[userIndex], password: '' }
       });
     } catch (error) {
@@ -341,7 +364,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Use static wallet address for all payments
-      const staticWalletAddress = 'Lx2bsNTrzqnP5YHRXZZr3rxyTxEBkDkmhcb8HFHB6Fk';
+      const staticWalletAddress = '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX';
       const paymentSessionId = `${userId}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
       const createdAt = Date.now();
       const expiresAt = createdAt + (30 * 60 * 1000); // 30 minutes
@@ -424,14 +447,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🧪 Testing payment verification for $${amount}`);
       
       const result = await checkPaymentToUserAddress(
-        'Lx2bsNTrzqnP5YHRXZZr3rxyTxEBkDkmhcb8HFHB6Fk',
+        '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX',
         parseFloat(amount)
       );
       
       res.json({
         success: true,
         amount: parseFloat(amount),
-        wallet: 'Lx2bsNTrzqnP5YHRXZZr3rxyTxEBkDkmhcb8HFHB6Fk',
+        wallet: '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX',
         result: result
       });
     } catch (error) {
@@ -468,7 +491,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/wallet/test-static-payment/:amount", async (req, res) => {
     try {
       const { amount } = req.params;
-      const staticWalletAddress = 'Lx2bsNTrzqnP5YHRXZZr3rxyTxEBkDkmhcb8HFHB6Fk';
+      const staticWalletAddress = '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX';
       
       console.log(`🧪 Testing static wallet payment verification for $${amount}`);
       
@@ -494,7 +517,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { PublicKey } = await import('@solana/web3.js');
       
-      const publicKey = new PublicKey('Lx2bsNTrzqnP5YHRXZZr3rxyTxEBkDkmhcb8HFHB6Fk');
+      const publicKey = new PublicKey('352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX');
       
       // Get recent signatures
       const signatures = await connection.getSignaturesForAddress(publicKey, {
@@ -517,7 +540,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
               const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
               
-              if (accountKey === 'Lx2bsNTrzqnP5YHRXZZr3rxyTxEBkDkmhcb8HFHB6Fk') {
+              if (accountKey === '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX') {
                 const balanceChange = (postBalances[i] - preBalances[i]) / 1000000000; // Convert from lamports to SOL
                 
                 if (balanceChange > 0) {
@@ -538,7 +561,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({
         success: true,
-        wallet: 'Lx2bsNTrzqnP5YHRXZZr3rxyTxEBkDkmhcb8HFHB6Fk',
+        wallet: '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX',
         totalSignatures: signatures.length,
         incomingTransactions: transactions
       });
@@ -807,14 +830,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Process withdrawal
-      console.log(`🚀 Processing withdrawal: ${withdrawAmount} SOL to ${walletAddress} for user ${userId}`);
+      // 💰 Calculate withdrawal fees
+      const withdrawalAmountUSD = withdrawAmount * solPrice;
+      const feeCalculation = calculateWithdrawalFee(withdrawalAmountUSD);
       
-      const withdrawalResult = await withdrawSOL(walletAddress, withdrawAmount, userId);
+      // Calculate SOL amount after fee
+      const solAmountAfterFee = feeCalculation.amountToSend / solPrice;
+      
+      console.log(`🚀 Processing withdrawal: ${withdrawAmount} SOL ($${withdrawalAmountUSD.toFixed(2)}) to ${walletAddress} for user ${userId}`);
+      console.log(`💰 Fee applied: $${feeCalculation.feeApplied.toFixed(2)} (${(feeCalculation.feeApplied / withdrawalAmountUSD * 100).toFixed(1)}%)`);
+      console.log(`💸 Amount to send after fee: ${solAmountAfterFee.toFixed(6)} SOL ($${feeCalculation.amountToSend.toFixed(2)})`);
+      
+      // Send the amount after fee
+      const withdrawalResult = await withdrawSOL(walletAddress, solAmountAfterFee, userId);
 
       if (withdrawalResult.success) {
-        // Update user balance
-        const withdrawalAmountUSD = withdrawAmount * solPrice;
+        // Update user balance - deduct full requested amount
         user.balance -= withdrawalAmountUSD;
         
         // SECURITY: Track daily withdrawals
@@ -829,9 +860,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Save users
         saveUsers(users);
+        
+        // Log transaction
+        await logWithdrawalTransaction(
+          userId,
+          withdrawalAmountUSD,
+          feeCalculation.amountToSend,
+          feeCalculation.feeApplied,
+          {
+            walletAddress,
+            transactionHash: withdrawalResult.transactionHash,
+            solRequested: withdrawAmount,
+            solSent: solAmountAfterFee,
+            breakdown: feeCalculation.breakdown
+          }
+        );
 
         const processingTime = Date.now() - startTime;
-        console.log(`✅ WITHDRAWAL SUCCESS - User: ${userId}, Amount: ${withdrawAmount} SOL ($${withdrawalAmountUSD.toFixed(2)}), Address: ${walletAddress}, Hash: ${withdrawalResult.transactionHash}, Time: ${processingTime}ms, IP: ${clientIP}`);
+        console.log(`✅ WITHDRAWAL SUCCESS - User: ${userId}, Requested: ${withdrawAmount} SOL ($${withdrawalAmountUSD.toFixed(2)}), Sent: ${solAmountAfterFee.toFixed(6)} SOL ($${feeCalculation.amountToSend.toFixed(2)}), Fee: $${feeCalculation.feeApplied.toFixed(2)}, Address: ${walletAddress}, Hash: ${withdrawalResult.transactionHash}, Time: ${processingTime}ms, IP: ${clientIP}`);
         
         res.json({
           success: true,
@@ -840,6 +886,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           newBalance: user.balance,
           withdrawnAmount: withdrawAmount,
           withdrawnAmountUSD: withdrawalAmountUSD,
+          amountSent: solAmountAfterFee,
+          amountSentUSD: feeCalculation.amountToSend,
+          feeApplied: feeCalculation.feeApplied,
+          feeInfo: {
+            amountRequested: withdrawalAmountUSD,
+            amountSent: feeCalculation.amountToSend,
+            feeApplied: feeCalculation.feeApplied,
+            breakdown: feeCalculation.breakdown
+          },
           dailyWithdrawn: user.dailyWithdrawals[today],
           totalWithdrawn: user.totalWithdrawn
         });
@@ -1245,7 +1300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📋 Found ${allProcessedTransactions.size} already processed transactions`);
 
       // Verify payment using the static wallet address
-      const staticWalletAddress = 'Lx2bsNTrzqnP5YHRXZZr3rxyTxEBkDkmhcb8HFHB6Fk';
+      const staticWalletAddress = '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX';
       console.log(`🔍 Checking payment to static address: ${staticWalletAddress} for amount: $${paymentSession.amount}`);
       const verificationResult = await checkPaymentToUserAddress(
         staticWalletAddress,
