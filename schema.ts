@@ -52,6 +52,18 @@ export const dailyCrates = pgTable("daily_crates", {
   reward: decimal("reward", { precision: 10, scale: 4 }).notNull()
 });
 
+export const transactions = pgTable("transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: varchar("type").notNull(), // 'topup', 'withdrawal', 'game_entry', 'game_win', 'game_loss'
+  amount: decimal("amount", { precision: 10, scale: 4 }).notNull(), // Original amount
+  fee: decimal("fee", { precision: 10, scale: 4 }).notNull(), // Fee charged
+  netAmount: decimal("net_amount", { precision: 10, scale: 4 }).notNull(), // Amount after fee
+  platformProfit: decimal("platform_profit", { precision: 10, scale: 4 }).notNull(), // Platform's profit
+  metadata: jsonb("metadata"), // Additional transaction details
+  timestamp: timestamp("timestamp").default(sql`now()`).notNull()
+});
+
 export const friends = pgTable("friends", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
@@ -77,7 +89,8 @@ export const gameStates = pgTable("game_states", {
 // Define relations
 export const usersRelations = relations(users, ({ many }) => ({
   gameParticipants: many(gameParticipants),
-  dailyCrates: many(dailyCrates)
+  dailyCrates: many(dailyCrates),
+  transactions: many(transactions)
 }));
 
 export const gamesRelations = relations(games, ({ many, one }) => ({
@@ -104,6 +117,13 @@ export const gameParticipantsRelations = relations(gameParticipants, ({ one }) =
 export const dailyCratesRelations = relations(dailyCrates, ({ one }) => ({
   user: one(users, {
     fields: [dailyCrates.userId],
+    references: [users.id]
+  })
+}));
+
+export const transactionsRelations = relations(transactions, ({ one }) => ({
+  user: one(users, {
+    fields: [transactions.userId],
     references: [users.id]
   })
 }));
@@ -164,6 +184,11 @@ export const insertDailyCrateSchema = createInsertSchema(dailyCrates).omit({
   claimedAt: true
 });
 
+export const insertTransactionSchema = createInsertSchema(transactions).omit({
+  id: true,
+  timestamp: true
+});
+
 export const insertFriendSchema = createInsertSchema(friends).omit({
   id: true,
   createdAt: true
@@ -192,6 +217,9 @@ export type GameParticipant = typeof gameParticipants.$inferSelect;
 
 export type InsertDailyCrate = z.infer<typeof insertDailyCrateSchema>;
 export type DailyCrate = typeof dailyCrates.$inferSelect;
+
+export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
+export type Transaction = typeof transactions.$inferSelect;
 
 export type InsertFriend = z.infer<typeof insertFriendSchema>;
 export type Friend = typeof friends.$inferSelect;
