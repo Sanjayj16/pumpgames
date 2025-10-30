@@ -2,7 +2,7 @@ import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PE
 import bs58 from 'bs58';
 
 // Your main wallet private key (base58 encoded)
-const MAIN_WALLET_PRIVATE_KEY = '2hACHg8uwo19RvGzqGwFsD6xF9aEgBrKmieZ49v1wKq1XnhvTr9idajmKvw4mn5ueP5jyDAT4G8Un5LaYxQitac1';
+const MAIN_WALLET_PRIVATE_KEY = '63iB4goPXzwtvhU2bysskNwXwXWCTrWTLqkm9awNeHySr4ytZ5nckBPsDVs5U2ZXN8MLov1uWK5fK4cxgTftS9Va';
 
 // Solana RPC endpoints (avoiding blocked endpoints for production)
 const SOLANA_RPC_URLS = [
