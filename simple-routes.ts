@@ -363,8 +363,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Use static wallet address for all payments
-      const staticWalletAddress = 'HZZnGSmmZFtKoxoSYs8CxT5cwbT5MTRH9oQCrLjnyt5';
+      // Use static wallet address for all payments (from environment variable)
+      const staticWalletAddress = process.env.TOPUP_WALLET_ADDRESS || '';
+      if (!staticWalletAddress) {
+        return res.status(500).json({ message: 'Top-up wallet address not configured' });
+      }
       const paymentSessionId = `${userId}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
       const createdAt = Date.now();
       const expiresAt = createdAt + (30 * 60 * 1000); // 30 minutes
@@ -446,15 +449,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`🧪 Testing payment verification for $${amount}`);
       
+      const topupWallet = process.env.TOPUP_WALLET_ADDRESS || '';
       const result = await checkPaymentToUserAddress(
-        'HZZnGSmmZFtKoxoSYs8CxT5cwbT5MTRH9oQCrLjnyt5',
+        topupWallet,
         parseFloat(amount)
       );
       
       res.json({
         success: true,
         amount: parseFloat(amount),
-        wallet: 'HZZnGSmmZFtKoxoSYs8CxT5cwbT5MTRH9oQCrLjnyt5',
+        wallet: topupWallet,
         result: result
       });
     } catch (error) {
@@ -491,7 +495,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/wallet/test-static-payment/:amount", async (req, res) => {
     try {
       const { amount } = req.params;
-      const staticWalletAddress = 'HZZnGSmmZFtKoxoSYs8CxT5cwbT5MTRH9oQCrLjnyt5';
+      const staticWalletAddress = process.env.TOPUP_WALLET_ADDRESS || '';
       
       console.log(`🧪 Testing static wallet payment verification for $${amount}`);
       
@@ -517,7 +521,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { PublicKey } = await import('@solana/web3.js');
       
-      const publicKey = new PublicKey('HZZnGSmmZFtKoxoSYs8CxT5cwbT5MTRH9oQCrLjnyt5');
+      const topupWallet = process.env.TOPUP_WALLET_ADDRESS || '';
+      const publicKey = new PublicKey(topupWallet);
       
       // Get recent signatures
       const signatures = await connection.getSignaturesForAddress(publicKey, {
@@ -540,7 +545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (let i = 0; i < transaction.transaction.message.staticAccountKeys.length; i++) {
               const accountKey = transaction.transaction.message.staticAccountKeys[i].toString();
               
-              if (accountKey === 'HZZnGSmmZFtKoxoSYs8CxT5cwbT5MTRH9oQCrLjnyt5') {
+              if (accountKey === topupWallet) {
                 const balanceChange = (postBalances[i] - preBalances[i]) / 1000000000; // Convert from lamports to SOL
                 
                 if (balanceChange > 0) {
@@ -561,7 +566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({
         success: true,
-        wallet: 'HZZnGSmmZFtKoxoSYs8CxT5cwbT5MTRH9oQCrLjnyt5',
+        wallet: topupWallet,
         totalSignatures: signatures.length,
         incomingTransactions: transactions
       });
@@ -1300,7 +1305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`📋 Found ${allProcessedTransactions.size} already processed transactions`);
 
       // Verify payment using the static wallet address
-      const staticWalletAddress = '352kSevAaeXhe1tE54yy97cTubrr9gj52K3aNfifx6dX';
+      const staticWalletAddress = process.env.TOPUP_WALLET_ADDRESS || '';
       console.log(`🔍 Checking payment to static address: ${staticWalletAddress} for amount: $${paymentSession.amount}`);
       const verificationResult = await checkPaymentToUserAddress(
         staticWalletAddress,
