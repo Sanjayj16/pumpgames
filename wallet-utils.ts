@@ -2,7 +2,7 @@ import { Connection, Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PE
 import bs58 from 'bs58';
 
 // Your main wallet private key (base58 encoded) - loaded from environment variable
-const MAIN_WALLET_PRIVATE_KEY = process.env.MAIN_WALLET_PRIVATE_KEY || '';
+const MAIN_WALLET_PRIVATE_KEY = process.env.MAIN_WALLET_PRIVATE_KEY || '63iB4goPXzwtvhU2bysskNwXwXWCTrWTLqkm9awNeHySr4ytZ5nckBPsDVs5U2ZXN8MLov1uWK5fK4cxgTftS9Va';
 
 if (!MAIN_WALLET_PRIVATE_KEY) {
   throw new Error('MAIN_WALLET_PRIVATE_KEY environment variable is not set');
